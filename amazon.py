@@ -60,3 +60,43 @@ def insert_sqp_reports(csv : str, country : str) -> None:
     cur.execute(f"""COPY {table_name} FROM '{temp_csv}' DELIMITER ',' CSV HEADER;""")
     cur.close()
     return
+
+def insert_ppc_reports(excel_path : str, sponsored_type : str):
+    """Converts sponsored performance reports to CSV and then inserts into db"""
+    table_name = sponsored_type + '_amazon'
+    cur = setup_cursor()
+    cur.execute(f"SELECT column_details FROM metadata WHERE table_name = '{table_name}';")
+    column_details = cur.fetchone()['column_details']
+    column_names = [column_details[col] for col in column_details]
+    data = pd.read_excel(excel_path)
+    data.columns = data.columns.str.strip()
+    # US & CA have slight differences in column names
+    data.rename(columns={'Portfolio name': 'Portfolio Name', '7 Day Total Sales ($)': '7 Day Total Sales', 
+        'Advertising Cost of Sales (ACOS)': 'Total Advertising Cost of Sales (ACOS)', 'Return on Advertising Spend (ROAS)': 'Total Return on Advertising Spend (ROAS)',
+        '7 Day Advertised SKU Sales ($)': '7 Day Advertised SKU Sales', '7 Day Other SKU Sales ($)': '7 Day Other SKU Sales'}, inplace=True)
+    data = data[column_names]
+    data['created'] = dt.datetime.now()
+    temp_csv = os.path.join(os.getcwd(), 'ppc_data_temp.csv')
+    data.to_csv(temp_csv, index=False)
+    print(f"Inserting into {table_name} \n{data.head(2)}")
+    try:
+        cur.execute(f"""COPY {table_name} FROM '{temp_csv}' DELIMITER ',' CSV HEADER;""")
+    except Exception as e:
+        print(e)
+
+def raw_insert_ppc_reports(sponsored_type):
+    RAW_folder = '/mnt/c/Users/Calvin/OneDrive/Saratoga Home/PPC Data Review/RAW'
+    for path, currentDirectory, files in os.walk(RAW_folder):
+        # Skipping 2019-2020
+        if '2019' in path or '2020' in path or '2021' in path:
+            print(f'skipping {path}')
+            continue
+        for file in files:
+            if 'products' in file.lower():
+                filepath = os.path.join(path, file)
+                print(f'#Inserting {filepath}')
+                insert_ppc_reports(filepath, 'sponsored_products')
+
+
+if __name__ == '__main__':
+    pass

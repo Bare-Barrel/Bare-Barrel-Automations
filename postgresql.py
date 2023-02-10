@@ -37,6 +37,16 @@ def sql_to_dataframe(query):
    return df
 
 
+def create_metadata(cur):
+    "Metadata of column names"
+    cur.execute("""
+        CREATE TABLE metadata (
+            table_name TEXT PRIMARY KEY,
+            created TIMESTAMP,
+            column_details JSON
+        );""")
+
+
 def create_cerebro_amazon(cur):
     # "ABA SFR" DECIMAL removed from cerebro
     cur.execute("""
@@ -137,7 +147,66 @@ def create_search_query_performance(cur):
         );""")
 
 
+def create_sponsored_products_amazon(cur):
+    cur.execute("""
+        CREATE TABLE sponsored_products_amazon (
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            portfolio_name VARCHAR(100),
+            currency VARCHAR(3) NOT NULL,
+            campaign_name VARCHAR(100) NOT NULL,
+            ad_group_name VARCHAR(80) NOT NULL,
+            targeting VARCHAR(128) NOT NULL,
+            match_type VARCHAR(6),
+            customer_search_term VARCHAR(249),
+            impressions INT,
+            clicks SMALLINT,
+            ctr NUMERIC(5,2),
+            cpc NUMERIC(4,2),
+            spend NUMERIC(7,2),
+            total_sales NUMERIC(7,2),
+            acos NUMERIC(5,2),
+            roas NUMERIC(6,2),
+            total_orders SMALLINT,
+            total_units SMALLINT,
+            cvr NUMERIC(3,2),
+            advertised_sku_units SMALLINT,
+            other_sku_units SMALLINT,
+            advertised_sku_sales NUMERIC(6,2),
+            other_sku_sales NUMERIC(6,2),
+            created TIMESTAMP WITH TIME ZONE DEFAULT now(),
+            PRIMARY KEY (start_date, end_date, portfolio_name, currency, campaign_name, ad_group_name, targeting, match_type, customer_search_term)
+        );""")
+
+def insert_sponsored_products_amazon(cur):
+    cur.execute("""INSERT INTO metadata(table_name, created, column_details) 
+                    VALUES ('sponsored_products_amazon', NOW(), 
+                            '{"start_date": "Start Date",
+                                "end_date": "End Date",
+                                "portfolio_name": "Portfolio Name",
+                                "currency": "Currency",
+                                "campaign_name": "Campaign Name",
+                                "ad_group_name": "Ad Group Name",
+                                "targeting": "Targeting",
+                                "match_type": "Match Type",
+                                "customer_search_term": "Customer Search Term",
+                                "impressions": "Impressions",
+                                "clicks": "Clicks",
+                                "ctr": "Click-Thru Rate (CTR)",
+                                "cpc": "Cost Per Click (CPC)",
+                                "spend": "Spend",
+                                "total_sales": "7 Day Total Sales",
+                                "acos": "Total Advertising Cost of Sales (ACOS)",
+                                "roas": "Total Return on Advertising Spend (ROAS)",
+                                "total_orders": "7 Day Total Orders (#)",
+                                "total_units": "7 Day Total Units (#)",
+                                "cvr": "7 Day Conversion Rate",
+                                "advertised_sku_units": "7 Day Advertised SKU Units (#)",
+                                "other_sku_units": "7 Day Other SKU Units (#)",
+                                "advertised_sku_sales": "7 Day Advertised SKU Sales",
+                                "other_sku_sales": "7 Day Other SKU Sales"}');""")
+
 if __name__ == "__main__":
     cur = setup_cursor()
-    create_search_query_performance(cur)
+    insert_sponsored_products_amazon(cur)
     pass
