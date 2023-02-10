@@ -89,7 +89,7 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_rep
     print("@SearchQueryPerformance Logging in")
     await page.goto("https://sellercentral.amazon.com/signin?")
     await asyncio.sleep(5)
-    account_button = page.get_by_role("button", name="Calvin Del Rosario calvinmdelrosario@gmail.com")
+    account_button = page.get_by_role("button", name=f"Calvin Del Rosario {config['amazon_email']}")
     if await account_button.count():
         await account_button.click()
         await page.get_by_label("Password").fill(config['amazon_password'])
@@ -99,8 +99,8 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_rep
         await page.get_by_label("Password").fill(config['amazon_password'])
         await page.get_by_role("button", name="Sign in").click()
         await asyncio.sleep(10)
-        if await page.is_visible("button[name='Saratoga Home']"):
-            await page.get_by_role("button", name="Saratoga Home").click()
+        if await page.is_visible(f"button[name='{config['store_name']}']"):
+            await page.get_by_role("button", name=f"{config['store_name']}").click()
             await page.get_by_role("button", name="United States").click()
             await page.get_by_role("button", name="Select Account").click()
     await asyncio.sleep(10)
