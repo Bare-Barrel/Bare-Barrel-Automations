@@ -22,7 +22,7 @@ def insert_data(csv : str, **kwargs) -> None:
     print(data.head(5))
     data['created'] = dt.datetime.now()
     data.replace('-', '', inplace=True)
-    data.dropna(subset='Competitor Performance Score', inplace=True) # removes 0 competitor performance score
+    data.dropna(subset=['Position (Rank)', 'Competitor Performance Score'], inplace=True) # removes 0 competitor performance score
     # arranges column name following db column order
     cur.execute("""SELECT column_name FROM information_schema.columns 
                     WHERE table_name = %s

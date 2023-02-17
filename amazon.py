@@ -99,4 +99,5 @@ def raw_insert_ppc_reports(sponsored_type):
 
 
 if __name__ == '__main__':
+    raw_insert_ppc_reports('SP')
     pass

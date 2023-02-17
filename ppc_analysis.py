@@ -7,8 +7,8 @@ def get_data(country):
     query = f"""
             CREATE TEMP VIEW search_query_performance_latest
                 AS SELECT t2.category, "Search Query" search_query, MAX("Search Query Volume") search_query_volume,
-                    MAX("Search Funnel - Purchases: Total Count") total_purchases, SUM("Search Funnel - Impressions: ASIN Count") impressions,
-                    SUM("Search Funnel - Clicks: ASIN Count") clicks, SUM("Search Funnel - Purchases: ASIN Count") purchases
+                    MAX("Purchases: Total Count") total_purchases, SUM("Impressions: ASIN Count") impressions,
+                    SUM("Clicks: ASIN Count") clicks, SUM("Purchases: ASIN Count") purchases
                     FROM search_query_performance t1
                     LEFT JOIN product_amazon t2
                         ON t1.asin = t2.asin

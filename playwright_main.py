@@ -35,13 +35,14 @@ async def scrape_cerebro(playwright: Playwright, marketplaces=['US', 'CA']) -> l
     for country in marketplaces:
         marketplace_options = {'US': 'United States www.amazon.com',
                                'CA': 'Canada www.amazon.ca'}
-        await page.locator(".sc-dwkDbJ").click()  # Watchout for change in
-        await page.get_by_role("option", name=marketplace_options[country]).click()
-        competitors_list = pd.read_excel('Competitor ASINs.xlsx', sheet_name=country)
+        # await page.locator(".sc-dwkDbJ").click()  # Watchout for change in
+        # await page.get_by_role("option", name=marketplace_options[country]).click()
+        competitors_list = pd.read_excel('Competitor ASINs.xlsx', sheet_name=country).fillna('')
         for index, row in competitors_list.iterrows():
             # retrieves competitor asins
             competitors = competitors_list[competitors_list.Category == row.Category].iloc[:, 1:].values
             competitors = re.sub(r'\W+', ' ', str(competitors)).strip()
+            print(competitors)
             print(f"\tDownloading Cerebro {competitors}")
             # deletes asins
             input_box = page.locator('input[placeholder="Enter up to 10 product ASINs"]')
@@ -77,7 +78,8 @@ async def scrape_cerebro(playwright: Playwright, marketplaces=['US', 'CA']) -> l
 
 async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_reports=[]) -> None:
     """Download weekly Search Query Performance per ASIN for each marketplace.
-    Then inserts data to search_query_performance"""
+        Then inserts data to search_query_performance
+        Download Manager has only maximum of 100 items to download"""
     # playwright = sync_playwright().start() # PLS COMMENT THIS! FOR TESTING PURPOSES ONLY!
     print("Starting Search Query Performance Analytics. . .")
     storage = 'storage_sellercentral_amazon.json'
@@ -128,31 +130,25 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_rep
                 await asyncio.sleep(5)
 
                 try: 
-                    print("TRYING")
+                    print("@SQP Generating Download")
                     async with page.expect_popup() as page2_info:
                         await page.locator("#downloadModalGenerateDownloadButton").get_by_role("button", name="Generate Download").click()
                         await asyncio.sleep(5)
-                        # # error, click once
-                        # download_button = await page.query_selector("#downloadModalGenerateDownloadButton")
-                        # download_label  = await download_button.get_property('label')
-                        # download_label_json = await download_label.json_value()
-                        # print(download_label_json)
-                        # if 'Try again' in download_label_json:
-                        #     print("\t#ERROR: Try again")
-                        #     await download_button.click()
-                        #     await asyncio.sleep(5)
-                        error_exists = await page.locator('#downloadModalGenerateDownloadButton').is_visible(timeout=300)
-                        if error_exists:
+
+                        # checks for errors 'Try again'
+                        tries = 0
+                        while await page.locator('#downloadModalGenerateDownloadButton').is_visible(timeout=300) and tries <= 30:
                             print("\t#ERROR: Try again")
                             await page.locator("#downloadModalGenerateDownloadButton").click()
-                            await asyncio.sleep(5)
+                            await asyncio.sleep(3)
+                        await asyncio.sleep(5)
 
                         # closes download manager page every popup            
                         page2 = await page2_info.value 
                         await page2.close()
-                        print('\tDownload success!')
+                        print('\t@SQP Download success!')
                 except:
-                    print("Failed to download")
+                    print("@SQP Failed to download!")
                     pass
         return
 
@@ -172,24 +168,31 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_rep
     # selects view 100 rows
     await page.click('.select-header')
     await page.click('text=View 100 rows')
-    # downloads each report
-    download_buttons = await page.get_by_role("row").get_by_text("Download").all()
-    print(f"LENGTH OF DOWNLOAD BUTTONS: {len(download_buttons)}")
-    for download_button in download_buttons:
-        try:
-            await download_button.click()
-            async with page.expect_download() as download_info:
-                async with page.expect_popup() as page2_info:
-                    page2 = await page2_info.value    # download popup closes immediately
-            download = await download_info.value
-            path = await download.path() # random guid in a temp folder
-            filename = download.suggested_filename # US_Search_Query_Performance_ASIN_View_Week_2022_12_31.csv
-            country = filename.split('_')[0]
-            print(f"filename: {filename}")
-            # inserts to amazon db
-            amazon.insert_sqp_reports(path, country)
-        except Exception as e:
-            print(e)
+    # counts pages
+    page_count = await page.locator('ul[class="pages"]').locator('li').count()
+    # downloads each report per page
+    for page_no in range(1, page_count+1):
+        print(f"@SQP Download Manager page {page_no}. . .")
+        download_buttons = await page.get_by_role("row").get_by_text("Download").all()
+        print(f"\tNumber of download buttons: {len(download_buttons)}")
+        for download_button in download_buttons:
+            try:
+                await download_button.click()
+                async with page.expect_download() as download_info:
+                    async with page.expect_popup() as page2_info:
+                        page2 = await page2_info.value    # download popup closes immediately
+                download = await download_info.value
+                path = await download.path() # random guid in a temp folder
+                filename = download.suggested_filename # US_Search_Query_Performance_ASIN_View_Week_2022_12_31.csv
+                country = filename.split('_')[0]
+                print(f"filename: {filename}")
+                # inserts to amazon db
+                amazon.insert_sqp_reports(path, country)
+            except Exception as e:
+                print(e)
+    next_page = page.locator('span[part="pagination-nav-right"][tabindex="0"]')
+    if await next_page.is_visible():
+        await next_page.click()
     # ---------------------
     # saves storage & closes browser.
     await context.storage_state(path=storage)
@@ -201,12 +204,19 @@ async def main():
     async with async_playwright() as playwright:
         last_week = dt.date.today() - dt.timedelta(weeks=1)
         date_report  = amazon.end_of_week_date(last_week)
-        # task1 = asyncio.create_task(scrape_cerebro(playwright, ['CA']))
-        date_report = ['2022-12-31', '2023-01-07', '2023-01-14', '2023-01-21', '2023-01-28']
-        task2 = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US'], date_reports=date_report))
-        # to insert to db OR NOT????
+        # task1 = asyncio.create_task(scrape_cerebro(playwright, ['US', 'CA']))
         # cerebro_temps = await task1
-        sqp_temps     = await task2
+        # Define start and end dates
+        start_date = dt.date(2022, 12, 17)
+        end_date = dt.date(2023, 2, 5)
+        # Generate a list of all dates between start and end dates
+        all_dates = [start_date + dt.timedelta(days=x) for x in range((end_date - start_date).days + 1)]
+        # Filter out only the Saturdays
+        date_reports = [date for date in all_dates if date.weekday() == 5]
+        for date_report in date_reports:
+            task2 = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US', 'CA'], date_reports=[date_report]))
+            sqp_temps     = await task2
+        # to insert to db OR NOT????
 
 
 if __name__ == '__main__':
