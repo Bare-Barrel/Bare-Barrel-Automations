@@ -35,8 +35,8 @@ async def scrape_cerebro(playwright: Playwright, marketplaces=['US', 'CA']) -> l
     for country in marketplaces:
         marketplace_options = {'US': 'United States www.amazon.com',
                                'CA': 'Canada www.amazon.ca'}
-        # await page.locator(".sc-dwkDbJ").click()  # Watchout for change in
-        # await page.get_by_role("option", name=marketplace_options[country]).click()
+        await page.click('div.sc-brSvTw.guYjPO')  # div that contains image of country flag selected
+        await page.get_by_role("option", name=marketplace_options[country]).click()
         competitors_list = pd.read_excel('Competitor ASINs.xlsx', sheet_name=country).fillna('')
         for index, row in competitors_list.iterrows():
             # retrieves competitor asins
@@ -204,18 +204,18 @@ async def main():
     async with async_playwright() as playwright:
         last_week = dt.date.today() - dt.timedelta(weeks=1)
         date_report  = amazon.end_of_week_date(last_week)
-        # task1 = asyncio.create_task(scrape_cerebro(playwright, ['US', 'CA']))
-        # cerebro_temps = await task1
+        task1 = asyncio.create_task(scrape_cerebro(playwright, ['US', 'CA']))
+        cerebro_temps = await task1
         # Define start and end dates
         start_date = dt.date(2022, 12, 17)
         end_date = dt.date(2023, 2, 5)
         # Generate a list of all dates between start and end dates
         all_dates = [start_date + dt.timedelta(days=x) for x in range((end_date - start_date).days + 1)]
         # Filter out only the Saturdays
-        date_reports = [date for date in all_dates if date.weekday() == 5]
-        for date_report in date_reports:
-            task2 = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US', 'CA'], date_reports=[date_report]))
-            sqp_temps     = await task2
+        # date_reports = [date for date in all_dates if date.weekday() == 5]
+        # for date_report in date_reports:
+        #     task2 = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US', 'CA'], date_reports=[date_report]))
+        #     sqp_temps     = await task2
         # to insert to db OR NOT????
 
 
