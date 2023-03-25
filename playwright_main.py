@@ -13,7 +13,7 @@ import asyncio
 with open('config.json') as f:
     config = json.load(f)
 
-async def scrape_cerebro(playwright: Playwright, marketplaces=['US', 'CA']) -> list:
+async def scrape_cerebro(playwright: Playwright, marketplaces=['US', 'CA'], asins=[]) -> list:
     print("Scraping Cerebro. . .")
     # playwright = sync_playwright().start() # PLS COMMENT THIS! FOR TESTING PURPOSES ONLY!
     storage = 'storage_helium10.json'
@@ -35,9 +35,11 @@ async def scrape_cerebro(playwright: Playwright, marketplaces=['US', 'CA']) -> l
     for country in marketplaces:
         marketplace_options = {'US': 'United States www.amazon.com',
                                'CA': 'Canada www.amazon.ca'}
-        await page.click('div.sc-brSvTw.guYjPO')  # div that contains image of country flag selected
+        await page.click('img[src*=Flag]')  # div that contains image of country flag selected
         await page.get_by_role("option", name=marketplace_options[country]).click()
         competitors_list = pd.read_excel('Competitor ASINs.xlsx', sheet_name=country).fillna('')
+        if asins:
+            competitors_list = competitors_list[competitors_list.ASIN.str.contains('|'.join(asins))]
         for index, row in competitors_list.iterrows():
             # retrieves competitor asins
             competitors = competitors_list[competitors_list.Category == row.Category].iloc[:, 1:].values
@@ -76,7 +78,7 @@ async def scrape_cerebro(playwright: Playwright, marketplaces=['US', 'CA']) -> l
     await browser.close()
 
 
-async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_reports=[]) -> None:
+async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_reports=[], asins=[]) -> None:
     """Download weekly Search Query Performance per ASIN for each marketplace.
         Then inserts data to search_query_performance
         Download Manager has only maximum of 100 items to download"""
@@ -108,13 +110,15 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_rep
     await asyncio.sleep(10)
 
     # generates downloads for each active product
-    async def download_sqp(country, dates=[]):
+    async def download_sqp(country, dates=[], asins=asins):
         "Optional: Input list of dates to download YYYY-MM-DD"
         sqp_url = "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-asin-view&asin={}&reporting-range=weekly&weekly-week={}"
-        active_asins = amazon.get_amazon_products(country=country)
+        if asins == []:
+            asins = amazon.get_amazon_products(country=country) # retrieves active asins
 
-        for asin in active_asins:
+        for asin in asins:
             for date_report in date_reports:
+                print(date_report)
                 print(f"@SearchQueryPerformance Querying {asin} ({country}) {date_report}")
                 await page.goto(sqp_url.format(asin, date_report))  # refreshes page as soon as it changes marketplace
                 await page.click('[id*="katal-id-"]')  # *= starts with e.g. id=katal-id-0
@@ -204,18 +208,19 @@ async def main():
     async with async_playwright() as playwright:
         last_week = dt.date.today() - dt.timedelta(weeks=1)
         date_report  = amazon.end_of_week_date(last_week)
-        task1 = asyncio.create_task(scrape_cerebro(playwright, ['US', 'CA']))
-        cerebro_temps = await task1
+        # task1 = asyncio.create_task(scrape_cerebro(playwright, ['US', 'CA'], asins=['B0BPK1R7MK', 'B0B4T3MF8P']))
+        # cerebro_temps = await task1
         # Define start and end dates
-        start_date = dt.date(2022, 12, 17)
-        end_date = dt.date(2023, 2, 5)
+        start_date = dt.date(2023, 2, 5)
+        end_date = dt.date(2023, 2, 26)
         # Generate a list of all dates between start and end dates
         all_dates = [start_date + dt.timedelta(days=x) for x in range((end_date - start_date).days + 1)]
         # Filter out only the Saturdays
-        # date_reports = [date for date in all_dates if date.weekday() == 5]
-        # for date_report in date_reports:
-        #     task2 = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US', 'CA'], date_reports=[date_report]))
-        #     sqp_temps     = await task2
+        date_reports = [date for date in all_dates if date.weekday() == 5]
+        for date_report in date_reports:
+            date_report = [date_report]
+            task2 = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US'], date_reports=date_report))
+            sqp_temps     = await task2
         # to insert to db OR NOT????
 
 
