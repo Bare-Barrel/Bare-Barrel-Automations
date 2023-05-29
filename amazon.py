@@ -5,6 +5,7 @@ import os
 from postgresql import setup_cursor
 import re
 import psycopg2
+import csv
 
 def get_amazon_products(country : str = 'US') -> list:
     """Retrieves active amazon products from product_amazon db
@@ -25,12 +26,24 @@ def end_of_week_date(date : dt.date) -> dt.date:
     return end_date
 
 
-def insert_sqp_reports(csv : str, country : str) -> None:
+def is_utf8(s):
+    try:
+        s.encode('utf-8')
+        return True
+    except UnicodeEncodeError:
+        return False
+
+
+def insert_sqp_reports(csv_path : str) -> None:
     """Insert Search Query Performance Reports to db"""
     cur = setup_cursor()
-    metadata = pd.read_csv(csv, nrows=0)
-    data     = pd.read_csv(csv, skiprows=1)
-    table_name = 'search_query_performance'
+    filename = os.path.basename(csv_path)
+    metadata = pd.read_csv(csv_path, nrows=0)
+    data     = pd.read_csv(csv_path, skiprows=1)
+    # extracts info from filename
+    country = filename.split('_')[0]
+    view = 'brand' if 'brand' in filename.lower() else 'asin'
+    table_name = 'search_query_performance_{}_view'.format(view)
     print(f"\tINSERTING {metadata.columns} to {table_name}")
     # cleans & inserts metadata
     data['country'] = country
@@ -41,9 +54,13 @@ def insert_sqp_reports(csv : str, country : str) -> None:
             data['asin'] = value
         elif re.search('Reporting Range', col, re.IGNORECASE):
             data['reporting_range'] = value
+    # cleans columns to match database naming convention
+    data.columns = map(str.lower, data.columns)
+    data.columns = data.columns.str.replace('[^a-zA-Z0-9_ ]', '').str.strip()
+    data.columns = data.columns.str.replace(' ', '_')
     # calculates week number, start & end date
-    data['Reporting Date'] = pd.to_datetime(data['Reporting Date'])
-    data['end_date']       = data['Reporting Date']
+    data['reporting_date'] = pd.to_datetime(data['reporting_date'])
+    data['end_date']       = data['reporting_date']
     data['start_date']     = data['end_date'] - dt.timedelta(days=6)
     data['week']           = data['end_date'].dt.isocalendar().week
     data['created']        = dt.datetime.now()
@@ -54,15 +71,28 @@ def insert_sqp_reports(csv : str, country : str) -> None:
     column_names = [row['column_name'] for row in cur.fetchall()]
     data = data[column_names]
     print(data.head(3))
+    # removing & fixing `tab spaces` in search query
+    data['search_query'] = data['search_query'].replace('    ', ' ', regex=True)
+    data['search_query'] = data['search_query'].replace(r'\\', '(?)', regex=True)
     # inserts to db
     temp_csv = os.path.join(os.getcwd(), 'sqp_temp.csv')
-    data.to_csv(temp_csv, index=False)
-    cur.execute(f"""COPY {table_name} FROM '{temp_csv}' DELIMITER ',' CSV HEADER;""")
+    data.to_csv(temp_csv, index=False, sep='\t')
+    with open(temp_csv, 'r', encoding='utf-8') as file:
+        next(file)
+        # cur.execute(f"""COPY {table_name} FROM '{temp_csv}' DELIMITER ',' CSV HEADER;""")
+        cur.copy_from(file, table_name, null='', sep='\t', columns=(col for col in data.columns))
     cur.close()
     return
 
+
 def insert_ppc_reports(excel_path : str, sponsored_type : str):
-    """Converts sponsored performance reports to CSV and then inserts into db"""
+    """Converts sponsored performance reports to CSV and then inserts into db
+    
+    Args:
+        excel_path (str|os.path): Path to Sponsored Report
+        sponsored_type (str): ['sponsored_product', 'sponsored_brand', 'sponsored_display']
+
+    Return: None?"""
     table_name = sponsored_type + '_amazon'
     cur = setup_cursor()
     cur.execute(f"SELECT column_details FROM metadata WHERE table_name = '{table_name}';")
@@ -99,4 +129,6 @@ def raw_insert_ppc_reports(sponsored_type):
 
 
 if __name__ == '__main__':
+    filepath = os.path.join('SQP Downloads', 'CA_Search_Query_Performance_Brand_View_Simple_Week_2023_02_18.csv')
+    insert_sqp_reports(filepath)
     pass
