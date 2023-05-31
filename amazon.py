@@ -128,6 +128,18 @@ def raw_insert_ppc_reports(sponsored_type):
                 insert_ppc_reports(filepath, 'sponsored_products')
 
 
+def insert_sponsored_products(path, report_type):
+    """Inserts PPC sponsored product PPC data into database by specifying type of report.
+    In case of duplication, updates the database with the latest data inserted.
+
+    Args:
+        path (os.path|str): path to the excel report
+        report_type (str): type of report of the sponsored product ['search term', 'targeting', 
+                            'search term impression share', 'purchased product', 'placement', 
+                            'performance over time', 'campaign', advertised product']
+
+    Returns: None"""
+
 if __name__ == '__main__':
     filepath = os.path.join('SQP Downloads', 'CA_Search_Query_Performance_Brand_View_Simple_Week_2023_02_18.csv')
     insert_sqp_reports(filepath)
