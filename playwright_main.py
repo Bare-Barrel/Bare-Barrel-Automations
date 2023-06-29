@@ -304,14 +304,14 @@ async def main():
         # cur.execute("SELECT DISTINCT(reporting_date) FROM search_query_performance_asin_view GROUP BY reporting_date HAVING COUNT(DISTINCT(asin)) < 10 ORDER BY reporting_date;")
         # date_reports = cur.fetchall()
         current_date = dt.date.today()
-        start_date = dt.date(2023, 5, 20)
+        start_date = dt.date(2023, 5, 27)
         sundays = []
         while start_date < current_date:
             sundays.append(str(start_date))
             start_date += dt.timedelta(days=7)
             # date_report = amazon.end_of_week_date(start_date)
             # date_report = str(date_report['reporting_date'])
-        task2 = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US', 'CA'], date_reports=sundays, view='brand'))
+        task2 = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US'], date_reports=sundays, view='asin'))
         # to insert to db OR NOT????
         # cerebro_temps = await task1
         sqp_temps     = await task2

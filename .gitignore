@@ -5,4 +5,5 @@
 __pycache__
 /PPC Data/
 /SQP Downloads/
-*venv
+*_venv
+*_env

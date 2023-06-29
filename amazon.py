@@ -85,6 +85,20 @@ def insert_sqp_reports(csv_path : str) -> None:
     return
 
 
+def raw_insert_ppc_reports(sponsored_type):
+    RAW_folder = '/mnt/c/Users/Calvin/OneDrive/Saratoga Home/PPC Data Review/RAW'
+    for path, currentDirectory, files in os.walk(RAW_folder):
+        # Skipping 2019-2020
+        if '2019' in path or '2020' in path or '2021' in path:
+            print(f'skipping {path}')
+            continue
+        for file in files:
+            if 'products' in file.lower():
+                filepath = os.path.join(path, file)
+                print(f'#Inserting {filepath}')
+                insert_ppc_reports(filepath, 'sponsored_products')
+
+
 def insert_ppc_reports(excel_path : str, sponsored_type : str):
     """Converts sponsored performance reports to CSV and then inserts into db
     
@@ -108,39 +122,15 @@ def insert_ppc_reports(excel_path : str, sponsored_type : str):
     data['created'] = dt.datetime.now()
     temp_csv = os.path.join(os.getcwd(), 'ppc_data_temp.csv')
     data.to_csv(temp_csv, index=False)
-    print(f"Inserting into {table_name} \n{data.head(2)}")
+    print(f"Inserting into {table_name} \n{data.head(2)}") 
     try:
         cur.execute(f"""COPY {table_name} FROM '{temp_csv}' DELIMITER ',' CSV HEADER;""")
     except Exception as e:
         print(e)
 
-def raw_insert_ppc_reports(sponsored_type):
-    RAW_folder = '/mnt/c/Users/Calvin/OneDrive/Saratoga Home/PPC Data Review/RAW'
-    for path, currentDirectory, files in os.walk(RAW_folder):
-        # Skipping 2019-2020
-        if '2019' in path or '2020' in path or '2021' in path:
-            print(f'skipping {path}')
-            continue
-        for file in files:
-            if 'products' in file.lower():
-                filepath = os.path.join(path, file)
-                print(f'#Inserting {filepath}')
-                insert_ppc_reports(filepath, 'sponsored_products')
-
-
-def insert_sponsored_products(path, report_type):
-    """Inserts PPC sponsored product PPC data into database by specifying type of report.
-    In case of duplication, updates the database with the latest data inserted.
-
-    Args:
-        path (os.path|str): path to the excel report
-        report_type (str): type of report of the sponsored product ['search term', 'targeting', 
-                            'search term impression share', 'purchased product', 'placement', 
-                            'performance over time', 'campaign', advertised product']
-
-    Returns: None"""
-
 if __name__ == '__main__':
-    filepath = os.path.join('SQP Downloads', 'CA_Search_Query_Performance_Brand_View_Simple_Week_2023_02_18.csv')
-    insert_sqp_reports(filepath)
-    pass
+    # filepath = os.path.join('SQP Downloads', 'CA_Search_Query_Performance_Brand_View_Simple_Week_2023_02_18.csv')
+    # insert_sqp_reports(filepath)
+    filepath = os.path.join('PPC Data', 'Sponsored Products Search term report.xlsx')
+    insert_ppc_reports(filepath, 'sponsored_product')
+    pass    
