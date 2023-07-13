@@ -88,8 +88,17 @@ def sql_standardize(name, remove_parenthesis=True, remove_file_extension=True):
     return name
     
 
+def camel_to_snake(name):
+    """Transform camelCase names to snake_case names"""
+    name = re.sub(r'(?<!^)(?=[A-Z])', '_', name)
+    name = re.sub(r'(?<!^)(?=\d+[a-z]+)', r'_', name)
+    # name = name.strip('_').replace('__', '_')
+    return name.lower()
+
+
 def create_table(cur, file_path, table_name='filename', created_at=True, updated_at=True, keys=None):
-    """Reads an excel or csv file, then normalizes table columns with generic data types"""
+    """Reads an excel or csv file, then normalizes table columns with generic data types
+    IMPORTANT: Manually edit data types via excel"""
     # Read file
     pd_read_file = {'.csv': pd.read_csv, '.xls': pd.read_excel, '.xlsx': pd.read_excel}
     file_extension = os.path.splitext(file_path)[-1]
@@ -103,6 +112,9 @@ def create_table(cur, file_path, table_name='filename', created_at=True, updated
 
     # Iterate through each column, cleans & identifies data type
     for column_name in data.columns:
+        # First, transforms date columns
+        if 'date' in column_name.lower():
+            data[column_name] = pd.to_datetime(data[column_name], errors='ignore', infer_datetime_format=True)
         standardized_column_name = sql_standardize(column_name)
         data_type = str(data[column_name].dtype)
         # Map pandas data types to generic PostgreSQL data types
@@ -117,7 +129,7 @@ def create_table(cur, file_path, table_name='filename', created_at=True, updated
             if has_time:
                 data_type = 'timestamp'
         elif 'bool' in data_type:
-            data_type = 'boolean'                
+            data_type = 'boolean'
         else:
             data_type = 'text'
     
@@ -170,14 +182,19 @@ def update_updated_at_trigger(cur, table_names=[]):
                     EXECUTE FUNCTION update_updated_at();""")
 
 
-def create_sponsored_data(cur, directory):
+def create_sponsored_tables(cur, directory):
     """Create sponsored tables by specifying a directory"""
-    directory = 'PPC Data'
-    for file in os.listdir(directory):
-        table_name = sql_standardize(file)
-        print(table_name)
+    cur = setup_cursor()
+    for root, path, files in os.walk(directory):
+        for file in files:
+            file_path = os.path.join(root, file)
+            table_name = sql_standardize(file)
+            print(table_name)
+            create_table(cur, file_path)
+            update_updated_at_trigger(cur, table_name)
+            upsert_bulk(table_name, file_path)
 
-    
+
 
 def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
     """
@@ -199,7 +216,7 @@ def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
     # Mapping PostgreSQL data types to Python/pandas data types
     type_mapping = {
         'integer': int,
-        'bigint': int,
+        'bigint': int, 
         'smallint': int,
         'numeric': float,
         'real': float,
@@ -259,14 +276,14 @@ def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
         cur.copy_expert(f"COPY {temp_table_name} FROM STDIN WITH (FORMAT CSV, DELIMITER ',', QUOTE '\"')", file)
 
     # Execute a query to get the primary key constraint name
-    cur.execute("""SELECT conname
-                    FROM pg_constraint
-                    WHERE conrelid = (
-                        SELECT oid
-                        FROM pg_class
-                        WHERE relname = %s
-                    ) AND contype = 'p';""", (table_name,))
-    primary_key_constraint_name = cur.fetchone()[0]
+    # cur.execute("""SELECT conname
+    #                 FROM pg_constraint
+    #                 WHERE conrelid = (
+    #                     SELECT oid
+    #                     FROM pg_class
+    #                     WHERE relname = %s
+    #                 ) AND contype = 'p';""", (table_name,))
+    # primary_key_constraint_name = cur.fetchone()[0]
 
     # Inserts copied data from the temporary table to the final table
     # updating existing values at each new conflict
@@ -274,8 +291,8 @@ def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
         f"""
         INSERT INTO {table_name}({', '.join(data.columns)})
         SELECT * FROM {temp_table_name}
-        ON CONFLICT ON CONSTRAINT sponsored_products_search_term_report_pkey DO UPDATE SET {update_set}
         """
+        # ON CONFLICT ON CONSTRAINT sponsored_products_search_term_report_pkey DO UPDATE SET {update_set}
     )
 
     # Drops temporary table (I believe this step is unnecessary,
@@ -635,7 +652,9 @@ if __name__ == "__main__":
     # with open('Active Amazon Products.csv', 'r') as f:
     #     next(f) # Skips first line
     #     cur.copy_from(f, 'product_amazon', sep=',')
-    file
-    csv = os.path.join(os.getcwd(), 'PPC Data', 'ppc_temp.csv')
-    upsert_bulk('sponsored_product_search_term_report', file_path=csv)
+    # file
+    # csv = os.path.join(os.getcwd(), 'PPC Data', 'ppc_temp.csv')
+    # upsert_bulk('sponsored_product_search_term_report', file_path=csv)
+    # create_sponsored_tables(setup_cursor(), directory)
+
     pass
