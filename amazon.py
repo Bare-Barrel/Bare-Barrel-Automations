@@ -12,7 +12,7 @@ def get_amazon_products(country : str = 'US') -> list:
     Args:
     country = 'US', 'CA', 'UK'
     Return list of ASINs"""
-    cur = setup_cursor()
+    cur = setup_cursor().connect('ppc')
     cur.execute("""SELECT asin FROM product_amazon
                     WHERE active IS TRUE;""")
     asins = [row['asin'] for row in cur.fetchall()]
@@ -36,7 +36,7 @@ def is_utf8(s):
 
 def insert_sqp_reports(csv_path : str) -> None:
     """Insert Search Query Performance Reports to db"""
-    cur = setup_cursor()
+    cur = setup_cursor().connect('ppc')
     filename = os.path.basename(csv_path)
     metadata = pd.read_csv(csv_path, nrows=0)
     data     = pd.read_csv(csv_path, skiprows=1)
@@ -108,7 +108,7 @@ def insert_ppc_reports(excel_path : str, sponsored_type : str):
 
     Return: None?"""
     table_name = sponsored_type + '_amazon'
-    cur = setup_cursor()
+    cur = setup_cursor().connect('ppc')
     cur.execute(f"SELECT column_details FROM metadata WHERE table_name = '{table_name}';")
     column_details = cur.fetchone()['column_details']
     column_names = [column_details[col] for col in column_details]

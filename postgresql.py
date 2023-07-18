@@ -12,11 +12,10 @@ with open("config.json") as f:
     config = json.load(f)
 
 
-
-def setup_cursor(autocommit=True, cursor_factory=psycopg2.extras.RealDictCursor):
+class setup_cursor():
     """
-    Sets up psycopg2 cursor with the default configuration. The configuration file is
-    found on the residing directory. 
+    Sets up psycopg2 cursor by specifying database with the default configuration. 
+    The configuration file is found on the residing directory. 
     
     Args: 
         autocommit (bool): Omits the conn.commit()
@@ -24,20 +23,54 @@ def setup_cursor(autocommit=True, cursor_factory=psycopg2.extras.RealDictCursor)
     Returns:
         conn.cursor()
     """
-    # Establishing connection to database (Make sure to sudo service postgresql start)
-    conn = psycopg2.connect(f"dbname={config['postgres_db']} user={config['postgres_user']} host={config['postgres_host']} port={config['postgres_port']} password={config['postgres_password']}")
-    conn.set_session(autocommit = autocommit)
-    cur = conn.cursor(cursor_factory = cursor_factory)      # https://www.psycopg.org/docs/extras.html#real-dictionary-cursor
-    return cur
+    def __init__(self, dbname, autocommit=True, cursor_factory=psycopg2.extras.RealDictCursor):
+        self.dbname = dbname
+        self.autocommit = autocommit
+        self.cursor_factory = cursor_factory
+        self.conn = None
+        self.cur = None
+        self.config = config
+
+    def __enter__(self):
+        # Establishing connection to the database
+        self.conn = psycopg2.connect(
+            f"dbname={self.dbname} user={self.config['postgres_user']} host={self.config['postgres_host']} port={self.config['postgres_port']} password={self.config['postgres_password']}"
+        )
+        self.conn.set_session(autocommit=self.autocommit)
+        self.cur = self.conn.cursor(cursor_factory=self.cursor_factory)
+        return self.cur
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            print("An error occurred:", str(exc_val))
+        self.close()
+
+    def connect(self, dbname=None):
+        if not dbname:
+            dbname = self.dbname
+        # Establishing connection to the database
+        self.conn = psycopg2.connect(
+            f"dbname={dbname} user={self.config['postgres_user']} host={self.config['postgres_host']} port={self.config['postgres_port']} password={self.config['postgres_password']}"
+        )
+        self.conn.set_session(autocommit=self.autocommit)
+        self.cur = self.conn.cursor(cursor_factory=self.cursor_factory)
+        return self.cur
+
+    def close(self):
+        # Closing cursor and connection
+        if self.cur:
+            self.cur.close()
+        if self.conn:
+            self.conn.close()
 
 
-def sql_to_dataframe(query, vars=None):
+def sql_to_dataframe(dbname, query, vars=None):
    """
    Import data from a PostgreSQL database using a SELECT query 
    """
    try:
-        conn = psycopg2.connect(f"dbname={config['postgres_db']} user={config['postgres_user']} host={config['postgres_host']} port={config['postgres_port']} password={config['postgres_password']}")
-        cur = conn.cursor()
+        cur = setup_cursor(dbname=dbname, autocommit=True, 
+                                cursor_factory=psycopg2.extras.NamedTupleCursor).connect()
         cur.execute(query, vars)
 
    except (Exception, psycopg2.DatabaseError) as error:
@@ -668,7 +701,7 @@ def create_sponsored_tables(cur, directory):
 
 
 if __name__ == "__main__":
-    cur = setup_cursor()
+    cur = setup_cursor('ppc').connect()
     reports = {
         "['campaign']": "sponsored_products_campaign_report",
         "['adGroup']":  "sponsored_products_adgroup_report", #(useless?)

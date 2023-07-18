@@ -11,7 +11,7 @@ def insert_data(csv : str, **kwargs) -> None:
     **kwargs - additional columns"""
     metadata = "{} ({}) - {} - {} - {}".format(kwargs['platform'], kwargs['country'], kwargs['asin'], kwargs['category'], kwargs['date'])
     print(f"\tINSERTING {metadata}")
-    cur = setup_cursor()
+    cur = setup_cursor().connect('ppc')
     table_name = f"cerebro_{kwargs['platform']}"
     # removes competitors' organic ranking
     data = pd.read_csv(csv)

@@ -261,7 +261,7 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_rep
                 for asin in active_asins:
                     # checks if it exists on the db
                     query = """SELECT EXISTS(SELECT * FROM search_query_performance_asin_view WHERE asin = %s AND reporting_date = %s)"""
-                    exists = postgresql.sql_to_dataframe(query, (asin, date_report))['exists'].item()
+                    exists = postgresql.sql_to_dataframe('ppc', query, (asin, date_report))['exists'].item()
                     if exists:
                         print("@SQP {} {} already exists \n\tSkipping...".format(asin, date_report))
                         continue
@@ -300,7 +300,7 @@ async def main():
         # task1 = asyncio.create_task(scrape_cerebro(playwright, ['CA']))
         # date_report = ['2022-09-10', '2022-09-17', '2022-09-24', '2022-10-01', '2022-10-08', '2022-10-15', '2022-10-22', '2022-09-10', '2023-01-07', '2023-01-14', '2023-01-21', '2023-01-28']
         import postgresql
-        # cur = postgresql.setup_cursor()
+        # cur = setup_cursor().connect('ppc')
         # cur.execute("SELECT DISTINCT(reporting_date) FROM search_query_performance_asin_view GROUP BY reporting_date HAVING COUNT(DISTINCT(asin)) < 10 ORDER BY reporting_date;")
         # date_reports = cur.fetchall()
         current_date = dt.date.today()
