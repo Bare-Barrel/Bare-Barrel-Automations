@@ -3,6 +3,7 @@ import json
 import postgresql
 import pandas as pd
 import datetime as dt
+import io
 import gzip
 
 
@@ -11,7 +12,7 @@ with open(amazon_ads_api_config_path) as f:
     config = json.load(f)
 
 # Constuct all columns by `group_by`
-campaign_base_metrics = 'impressions, clicks, cost, purchases1d, purchases7d, purchases14d, purchases30d, purchasesSameSku1d, purchasesSameSku7d, purchasesSameSku14d, purchasesSameSku30d, unitsSoldClicks1d, unitsSoldClicks7d, unitsSoldClicks14d, unitsSoldClicks30d, sales1d, sales7d, sales14d, sales30d, attributedSalesSameSku1d, attributedSalesSameSku7d, attributedSalesSameSku14d, attributedSalesSameSku30d, unitsSoldSameSku1d, unitsSoldSameSku7d, unitsSoldSameSku14d, unitsSoldSameSku30d, kindleEditionNormalizedPagesRead14d, kindleEditionNormalizedPagesRoyalties14d, date, campaignBiddingStrategy, costPerClick, clickThroughRate, spend'
+campaign_base_metrics = 'impressions, clicks, cost, purchases1d, purchases7d, purchases14d, purchases30d, purchasesSameSku1d, purchasesSameSku7d, purchasesSameSku14d, purchasesSameSku30d, unitsSoldClicks1d, unitsSoldClicks7d, unitsSoldClicks14d, unitsSoldClicks30d, sales1d, sales7d, sales14d, sales30d, attributedSalesSameSku1d, attributedSalesSameSku7d, attributedSalesSameSku14d, attributedSalesSameSku30d, unitsSoldSameSku1d, unitsSoldSameSku7d, unitsSoldSameSku14d, unitsSoldSameSku30d, kindleEditionNormalizedPagesRead14d, kindleEditionNormalizedPagesRoyalties14d, date, startDate, endDate, campaignBiddingStrategy, costPerClick, clickThroughRate, spend'
 campaign_addtl_metrics = 'campaignName, campaignId, campaignStatus, campaignBudgetAmount, campaignBudgetType, campaignRuleBasedBudgetAmount, campaignApplicableBudgetRuleId, campaignApplicableBudgetRuleName, campaignBudgetCurrencyCode, topOfSearchImpressionShare'
 adGroup_addtl_metrics = 'adGroupName, adGroupId, adStatus'
 campaignPlacement_addtl_metrics = 'placementClassification'
@@ -34,7 +35,6 @@ columns = {
     'advertiser': advertiser_base_metrics,
     'asin': asin_base_metrics
 }
-
 
 class AmazonAdvertisingReports():
     def __init__(self, client_id, client_secret, refresh_token, profile_id):
@@ -64,7 +64,7 @@ class AmazonAdvertisingReports():
         self.expires_in = dt.datetime.today() + dt.timedelta(seconds=response_json['expires_in'])
         return self.access_token
 
-    def request_report(marketplace, ad_product, report_type_id, group_by, start_date, end_date, time_unit='DAILY'):
+    def request_report(self, marketplace, ad_product, report_type_id, group_by, start_date, end_date, time_unit='DAILY'):
         """
         Requests a Sponsored Products report.
         Request the creation of a performance report for all entities of a single type which have
@@ -124,7 +124,7 @@ class AmazonAdvertisingReports():
         return response_json
 
 
-    def check_report_status(report_id, marketplace):
+    def check_report_status(self, report_id, marketplace):
         """
         Once you have made a successful POST call, report generation can take up to three hours.
         You can check the report generation status by using the reportId returned in the initial 
@@ -155,9 +155,9 @@ class AmazonAdvertisingReports():
         return response_json
 
 
-    def download_report(url, directory, report_name):
+    def download_report(self, url, directory, report_name):
         """
-        Downloads the .json.gz file report and then unzip to .json.
+        Downloads the .json.gz file report
         """
         # Download the report
         response = requests.get(url)
@@ -166,33 +166,47 @@ class AmazonAdvertisingReports():
             file_path = os.path.join(directory, report_name + '.json.gz')
             with open(file_path, 'wb') as file:
                 file.write(response.content)
-            # # Extract the .gz file
-            # with gzip.open(file_path, 'rb') as gz_file:
-            #     json_content = gz_file.read()
-            # # Convert the content to JSON
-            # json_data = json.loads(json_content)
-            # # Save as .json file
-            # with open(destination + '.json', 'w') as json_file:
-            #     json.dump(json_data, json_file, indent=4)
             print("File downloaded successfully.")
             print(report_name)
         else:
             print("Failed to download file.")
 
 
+def unzip_to_memory(file_path):
+    """
+    Unzips a gzip-compressed file into memory.
+
+    Args:
+        file_path (str): The path to the gzip-compressed file.
+
+    Returns:
+        file_like_object (_io.BytesIO): The uncompressed file content in memory.
+    """
+    with open(file_path, 'rb') as file:
+        file_content = file.read()
+    # Create an in-memory stream from the file content
+    file_stream = io.BytesIO(file_content)
+    # Create a gzip file object
+    gzip_file = gzip.GzipFile(fileobj=file_stream)
+    # Read the uncompressed content from the gzip file object
+    uncompressed_content = gzip_file.read()
+    file_like_object = io.BytesIO(uncompressed_content)  # Use io.BytesIO for binary content
+    return file_like_object
+
+
 if __name__ == '__main__':
     reports = [
-        ['spCampaigns', 'campaign'],
-        ['spCampaigns', 'adGroup'],
-        ['spCampaigns', 'campaignPlacement'],
-        ['spCampaigns', 'campaign, adGroup'],
-        ['spCampaigns', 'campaign, campaignPlacement'],
-        ['spCampaigns', 'adGroup, campaignPlacement'],
-        ['spCampaigns', 'campaign, adGroup, campaignPlacement'],
-        ['spTargeting', 'targeting'],
-        ['spSearchTerm', 'searchTerm'],
-        ['spAdvertisedProduct', 'advertiser'],
-        ['spPurchasedProduct', 'asin']
+        ['spCampaigns', 'campaign'], # sponsored_products_campaign
+        ['spCampaigns', 'adGroup'],  # sponsored_products_adgroup (useless?)
+        ['spCampaigns', 'campaignPlacement'], # sponored_products_placement (useless?)
+        ['spCampaigns', 'campaign, adGroup'], # sponsored_products_campaign_adgroup
+        ['spCampaigns', 'campaign, campaignPlacement'], # sponsored_products_campaign_placement
+        ['spCampaigns', 'adGroup, campaignPlacement'], # sponsored_products_adgroup_placement
+        ['spCampaigns', 'campaign, adGroup, campaignPlacement'], # sponsored_products_campaign_adgroup_placement (most useful?)
+        ['spTargeting', 'targeting'], # sponsored_products_targeting
+        ['spSearchTerm', 'searchTerm'], # sponsored_products_search_term_report
+        ['spAdvertisedProduct', 'advertiser'], # sponsored_products_advertised_product
+        ['spPurchasedProduct', 'asin']         # sponsored_products_purchased_product
     ]
 
     report_ids = {}
@@ -203,21 +217,6 @@ if __name__ == '__main__':
             report_ids[response['name']] = response['reportId']
         except Exception as e:
             print(e)
-
-
-    report_ids = {
-        "SPONSORED_PRODUCTS spSearchTerm ['searchTerm'] 2023-04-01 - 2023-04-30": '44ec764d-918e-49f0-948a-a456cb43c339',
-        "SPONSORED_PRODUCTS spTargeting ['targeting'] 2023-04-01 - 2023-04-30": '67ba4b54-0527-43c6-b019-de6ede1f52c4',
-        "SPONSORED_PRODUCTS spAdvertisedProduct ['advertiser'] 2023-04-01 - 2023-04-30": 'f384835e-ad60-4ffa-af79-690c8c3c50e6',
-        "SPONSORED_PRODUCTS spPurchasedProduct ['asin'] 2023-04-01 - 2023-04-30": 'dfc6f274-0c03-4f79-bbf8-1c45292304ba',
-        "SPONSORED_PRODUCTS spCampaigns ['campaign'] 2023-04-01 - 2023-04-30": '80138c2b-e4ba-4353-b313-bb8a984fc34a',
-        "SPONSORED_PRODUCTS spCampaigns ['adGroup'] 2023-04-01 - 2023-04-30": '6921afba-4112-4473-a545-f4fbc60cfaa4',
-        "SPONSORED_PRODUCTS spCampaigns ['campaignPlacement'] 2023-04-01 - 2023-04-30": 'c99f0538-ecea-4bd7-b8f0-9e3d18a757de',
-        "SPONSORED_PRODUCTS spCampaigns ['campaign', 'adGroup'] 2023-04-01 - 2023-04-30": '6921afba-4112-4473-a545-f4fbc60cfaa4',
-        "SPONSORED_PRODUCTS spCampaigns ['campaign', 'campaignPlacement'] 2023-04-01 - 2023-04-30": '43106b93-595d-467a-84f5-a346d40af192',
-        "SPONSORED_PRODUCTS spCampaigns ['campaign', 'adGroup', 'campaignPlacement'] 2023-04-01 - 2023-04-30": 'f34873fb-0f27-45c8-8dac-f5fee8afdb17',
-        "SPONSORED_PRODUCTS spCampaigns ['adGroup', 'campaignPlacement'] 2023-04-01 - 2023-04-30": "350397df-43ec-4300-aa01-f125025179db"
-        }
 
     for report in report_ids:
         report_id = report_ids[report]

@@ -55,8 +55,36 @@ def sql_to_dataframe(query, vars=None):
    return df
 
 
+def camel_to_snake(name):
+    """Transform camelCase names to snake_case names"""
+    name = re.sub(r'(?<!^)(?=[A-Z])', '_', name)
+    name = re.sub(r'(?<!^)(?=\d+[a-z]+)', r'_', name)
+    # name = name.strip('_').replace('__', '_')
+    return name.lower()
+
+
+def is_camel_case(string):
+    # Check if the string contains uppercase letters and lowercase letters
+    if not any(c.isupper() for c in string) or not any(c.islower() for c in string):
+        return False
+    # Check if the string starts with a lowercase letter
+    if not string[0].islower():
+        return False
+    # Check if the string contains any whitespace or special characters
+    if re.search(r"\W", string):
+        return False
+    # Check if the string contains any underscores
+    if '_' in string:
+        return False
+    # Check if the string contains consecutive uppercase letters
+    if re.search(r"[A-Z]{2,}", string):
+        return False
+    return True
+
+
 def sql_standardize(name, remove_parenthesis=True, remove_file_extension=True):
     """Standardizes column & table names according to SQL naming convention.
+    Automatically detects if camelCase is used.
     Column & table names that starts with a numeric character will always
     enclose it with quotes. For example, 14_day_sales would be "14_day_sales".
     Explanation for the parser limitation here: https://stackoverflow.com/questions/15917064/table-or-column-name-cannot-start-with-numeric
@@ -74,6 +102,9 @@ def sql_standardize(name, remove_parenthesis=True, remove_file_extension=True):
     # Remove parenthesis and inside of it
     if remove_parenthesis:
         name = re.sub(r'\(.+\)', '', name)
+    # Checks if camelCased
+    if is_camel_case(name):
+        return camel_to_snake(name)
     # Convert to lowercase
     name = name.lower()
     # Replace special characters with underscores
@@ -88,20 +119,14 @@ def sql_standardize(name, remove_parenthesis=True, remove_file_extension=True):
     return name
     
 
-def camel_to_snake(name):
-    """Transform camelCase names to snake_case names"""
-    name = re.sub(r'(?<!^)(?=[A-Z])', '_', name)
-    name = re.sub(r'(?<!^)(?=\d+[a-z]+)', r'_', name)
-    # name = name.strip('_').replace('__', '_')
-    return name.lower()
 
-
-def create_table(cur, file_path, table_name='filename', created_at=True, updated_at=True, keys=None):
-    """Reads an excel or csv file, then normalizes table columns with generic data types
+def create_table(cur, file_path, file_extension='auto', table_name='filename', created_at=True, updated_at=True, keys=None):
+    """Reads an excel, csv or json file, then normalizes table columns with generic data types
     IMPORTANT: Manually edit data types via excel"""
     # Read file
-    pd_read_file = {'.csv': pd.read_csv, '.xls': pd.read_excel, '.xlsx': pd.read_excel}
-    file_extension = os.path.splitext(file_path)[-1]
+    pd_read_file = {'csv': pd.read_csv, 'xls': pd.read_excel, 'xlsx': pd.read_excel, 'json': pd.read_json}
+    if file_extension == 'auto':
+        file_extension = file_path.split('.')[1] # ignores .gz
     data = pd_read_file[file_extension](file_path)
 
     # Create the SQL CREATE TABLE statement
@@ -119,7 +144,10 @@ def create_table(cur, file_path, table_name='filename', created_at=True, updated
         data_type = str(data[column_name].dtype)
         # Map pandas data types to generic PostgreSQL data types
         if 'int' in data_type:
+            int_bytes = int(data[column_name].max()).bit_length() / 8
             data_type = 'integer'
+            if int_bytes > 4:
+                data_type = 'bigint'
         elif 'float' in data_type:
             data_type = 'numeric'
         elif 'datetime' in data_type:
@@ -182,26 +210,12 @@ def update_updated_at_trigger(cur, table_names=[]):
                     EXECUTE FUNCTION update_updated_at();""")
 
 
-def create_sponsored_tables(cur, directory):
-    """Create sponsored tables by specifying a directory"""
-    cur = setup_cursor()
-    for root, path, files in os.walk(directory):
-        for file in files:
-            file_path = os.path.join(root, file)
-            table_name = sql_standardize(file)
-            print(table_name)
-            create_table(cur, file_path)
-            update_updated_at_trigger(cur, table_name)
-            upsert_bulk(table_name, file_path)
-
-
-
 def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
     """
     Fast way to upsert multiple entries at once
 
     table_name (str):
-    file_path (str|os.path): path to csv / excel
+    file_path (str|os.path): path to csv / excel / json
     temp_path (str|os.path): save location for the temp csv file
     """
     conn = psycopg2.connect(f"dbname={config['postgres_db']} user={config['postgres_user']} host={config['postgres_host']} port={config['postgres_port']} password={config['postgres_password']}")
@@ -251,8 +265,8 @@ def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
     )
     
     # Reads file
-    pd_read_file = {'.csv': pd.read_csv, '.xls': pd.read_excel, '.xlsx': pd.read_excel}
-    file_extension = os.path.splitext(file_path)[-1]
+    pd_read_file = {'csv': pd.read_csv, 'xls': pd.read_excel, 'xlsx': pd.read_excel, 'json': pd.read_json}
+    file_extension = file_path.split('.')[1]
     data = pd_read_file[file_extension](file_path)
     # standardize column names
     data.columns = [sql_standardize(column) for column in data.columns]
@@ -638,23 +652,55 @@ def copy_h10_keyword_tracker(cur, path):
         print(e)
 
 
+def create_sponsored_tables(cur, directory):
+    """Create sponsored tables by specifying a directory"""
+    cur = setup_cursor()
+    for root, path, files in os.walk(directory):
+        for file in files:
+            file_path = os.path.join(root, file)
+            table_name = sql_standardize(file)
+            print(f"Creating table {table_name}")
+            create_table(cur, file_path)
+            print("Updating triggers")
+            update_updated_at_trigger(cur, table_name)
+            print("Upserting bulk")
+            upsert_bulk(table_name, file_path)
+
+
 if __name__ == "__main__":
     cur = setup_cursor()
-    # create_h10_keyword_tracker(cur)
-    # path = os.path.join(os.getcwd(), 'H10 Keyword Tracker', 'helium10-kt-B0B6SYN9NX-2023-05-24.csv')
-    # copy_h10_keyword_tracker(cur, path)
-    # create_search_query_performance_brand_view(cur)
-    # create_metadata(cur)
-    # create_cerebro_amazon(cur)
-    # create_product_amazon(cur)
-    # create_search_query_performance_asin_view(cur)
-    # create_sponsored_products_amazon(cur)
-    # with open('Active Amazon Products.csv', 'r') as f:
-    #     next(f) # Skips first line
-    #     cur.copy_from(f, 'product_amazon', sep=',')
-    # file
-    # csv = os.path.join(os.getcwd(), 'PPC Data', 'ppc_temp.csv')
-    # upsert_bulk('sponsored_product_search_term_report', file_path=csv)
-    # create_sponsored_tables(setup_cursor(), directory)
-
+    reports = {
+        "['campaign']": "sponsored_products_campaign_report",
+        "['adGroup']":  "sponsored_products_adgroup_report", #(useless?)
+        "['campaignPlacement']": "sponsored_products_placement_report", #(useless?)
+        "['campaign', 'adGroup']": "sponsored_products_campaign_adgroup_report",
+        "['campaign', 'campaignPlacement']": "sponsored_products_campaign_placement_report",
+        "['adGroup', 'campaignPlacement']": "sponsored_products_adgroup_placement_report",
+        "['campaign', 'adGroup', 'campaignPlacement']": "sponsored_products_campaign_adgroup_placement_report", #(most useful?)
+        "['targeting']": "sponsored_products_targeting_report",
+        "['searchTerm']": "sponsored_products_search_term_report",
+        "['advertiser']": "sponsored_products_advertised_product_report",
+        "['asin']": "sponsored_products_purchased_product_report"
+    }
+    directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
+    for root, path, files in os.walk(directory):
+        for file in files:
+            print(file)
+            file_path = os.path.join(root, file)
+            groupby = re.findall(r"(\[.*\])", file)[0]
+            if '(US)' in file and '.gz' in file and groupby in reports:
+                print(groupby)
+                table_name = reports[groupby]
+                print(f"Dropping Table {table_name}")
+                try:
+                    cur.execute(f'DROP TABLE IF EXISTS {table_name};')
+                except:
+                    print(f"TABLE DOES NOT EXISTS {table_name}")
+                    pass
+                print(f"Creating table {table_name}")
+                create_table(cur, file_path, file_extension='json', table_name=table_name)
+                print("Updating triggers")
+                update_updated_at_trigger(cur, table_name)
+                print("Upserting bulk")
+                upsert_bulk(table_name, file_path)
     pass
