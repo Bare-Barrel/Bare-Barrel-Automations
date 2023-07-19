@@ -304,7 +304,7 @@ async def main():
         # cur.execute("SELECT DISTINCT(reporting_date) FROM search_query_performance_asin_view GROUP BY reporting_date HAVING COUNT(DISTINCT(asin)) < 10 ORDER BY reporting_date;")
         # date_reports = cur.fetchall()
         current_date = dt.date.today()
-        start_date = dt.date(2023, 5, 27)
+        start_date = dt.date(2023, 5, 6)
         sundays = []
         while start_date < current_date:
             sundays.append(str(start_date))

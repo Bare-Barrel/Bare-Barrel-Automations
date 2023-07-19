@@ -26,12 +26,14 @@ def rename_sqp():
 
 def insert_sqp_brands():
     for file in sqp_downloads:
-        if 'Brand' in file and 'US' in file:
+        if 'Brand' in file and 'US' in file and '2023_05_27' in file:
             try:
                 print(f"Inserting {file}")
                 filepath = os.path.join('SQP Downloads', file)
                 amazon.insert_sqp_reports(filepath)
-            except:
+            except Exception as e:
+                print("\tError on inserting")
+                print(e)
                 pass
 
 

@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import datetime as dt
 import os
-from postgresql import setup_cursor
+from postgresql import setup_cursor, sql_standardize
 import re
 import psycopg2
 import csv
@@ -12,7 +12,7 @@ def get_amazon_products(country : str = 'US') -> list:
     Args:
     country = 'US', 'CA', 'UK'
     Return list of ASINs"""
-    cur = setup_cursor().connect('ppc')
+    cur = setup_cursor('ppc').connect()
     cur.execute("""SELECT asin FROM product_amazon
                     WHERE active IS TRUE;""")
     asins = [row['asin'] for row in cur.fetchall()]
@@ -36,7 +36,7 @@ def is_utf8(s):
 
 def insert_sqp_reports(csv_path : str) -> None:
     """Insert Search Query Performance Reports to db"""
-    cur = setup_cursor().connect('ppc')
+    cur = setup_cursor('ppc').connect()
     filename = os.path.basename(csv_path)
     metadata = pd.read_csv(csv_path, nrows=0)
     data     = pd.read_csv(csv_path, skiprows=1)
@@ -55,9 +55,7 @@ def insert_sqp_reports(csv_path : str) -> None:
         elif re.search('Reporting Range', col, re.IGNORECASE):
             data['reporting_range'] = value
     # cleans columns to match database naming convention
-    data.columns = map(str.lower, data.columns)
-    data.columns = data.columns.str.replace('[^a-zA-Z0-9_ ]', '').str.strip()
-    data.columns = data.columns.str.replace(' ', '_')
+    data.columns = [sql_standardize(col, remove_parenthesis=False) for col in data.columns]
     # calculates week number, start & end date
     data['reporting_date'] = pd.to_datetime(data['reporting_date'])
     data['end_date']       = data['reporting_date']
@@ -108,7 +106,7 @@ def insert_ppc_reports(excel_path : str, sponsored_type : str):
 
     Return: None?"""
     table_name = sponsored_type + '_amazon'
-    cur = setup_cursor().connect('ppc')
+    cur = setup_cursor('ppc').connect()
     cur.execute(f"SELECT column_details FROM metadata WHERE table_name = '{table_name}';")
     column_details = cur.fetchone()['column_details']
     column_names = [column_details[col] for col in column_details]

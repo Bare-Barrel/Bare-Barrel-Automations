@@ -7,3 +7,4 @@ __pycache__
 /SQP Downloads/
 *_venv
 *_env
+.DS_Store

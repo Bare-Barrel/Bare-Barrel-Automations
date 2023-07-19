@@ -1,6 +1,5 @@
 import requests
 import json
-import postgresql
 import pandas as pd
 import datetime as dt
 import io
@@ -35,6 +34,12 @@ columns = {
     'advertiser': advertiser_base_metrics,
     'asin': asin_base_metrics
 }
+
+filters = {
+    'spSearchTerm': ['TARGETING_EXPRESSION', 'TARGETING_EXPRESSION_PREDEFINED'],
+    'spPurchasedProduct': ['BROAD', 'PHRASE', 'EXACT', 'TARGETING_EXPRESSION', 'TARGETING_EXPRESSION_PREDEFINED']
+}
+
 
 class AmazonAdvertisingReports():
     def __init__(self, client_id, client_secret, refresh_token, profile_id):
@@ -87,7 +92,7 @@ class AmazonAdvertisingReports():
         """
         # Access token
         if self.access_token is None or self.expires_in > dt.datetime.today():
-            self.get_acces_token()
+            self.get_access_token()
 
         # Selects date columns as per time unit
         for col in columns:
@@ -112,6 +117,12 @@ class AmazonAdvertisingReports():
                 "adProduct": ad_product,
                 "groupBy": group_by.split(', '),    # converts to list
                 "columns": columns[group_by].split(', '),
+                "filters": [
+                    {
+                        "field": "keywordType",
+                        "values": filters[report_type_id]
+                    }
+                ],
                 "reportTypeId": report_type_id,
                 "timeUnit": time_unit,
                 "format": "GZIP_JSON"
@@ -141,13 +152,13 @@ class AmazonAdvertisingReports():
         """
                 # Access token
         if self.access_token is None or self.expires_in > dt.datetime.today():
-            self.get_acces_token()
+            self.get_access_token()
             url = f'https://advertising-api.amazon.com/reporting/reports/{report_id}'
 
         headers = {
             'Authorization': f'Bearer {self.access_token}',
             'Amazon-Advertising-API-ClientId': self.client_id,
-            'Amazon-Advertising-API-Scope': self.client_id[marketplace]
+            'Amazon-Advertising-API-Scope': self.profile_id[marketplace]
         }
         response = requests.get(url, headers=headers)
         response_json = response.json()
