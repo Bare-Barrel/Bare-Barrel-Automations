@@ -67,6 +67,7 @@ class AmazonAdvertisingReports():
         response_json = response.json()
         self.access_token = response_json['access_token']
         self.expires_in = dt.datetime.today() + dt.timedelta(seconds=response_json['expires_in'])
+        print(f"Token expires in {self.expires_in}")
         return self.access_token
 
     def request_report(self, marketplace, ad_product, report_type_id, group_by, start_date, end_date, time_unit='DAILY'):
@@ -91,7 +92,7 @@ class AmazonAdvertisingReports():
             requests.response
         """
         # Access token
-        if self.access_token is None or self.expires_in > dt.datetime.today():
+        if self.access_token is None or self.expires_in < dt.datetime.today():
             self.get_access_token()
 
         # Selects date columns as per time unit
@@ -112,17 +113,16 @@ class AmazonAdvertisingReports():
             "name": f"{ad_product} ({marketplace.upper()}) {report_type_id} {str(group_by.split(', '))} {start_date} - {end_date}",
             "startDate": start_date,
             "endDate": end_date,
-            "date": start_date,
             "configuration":{
                 "adProduct": ad_product,
                 "groupBy": group_by.split(', '),    # converts to list
                 "columns": columns[group_by].split(', '),
-                "filters": [
-                    {
-                        "field": "keywordType",
-                        "values": filters[report_type_id]
-                    }
-                ],
+                # "filters": [
+                #     {
+                #         "field": "keywordType",
+                #         "values": filters[report_type_id]
+                #     }
+                # ],
                 "reportTypeId": report_type_id,
                 "timeUnit": time_unit,
                 "format": "GZIP_JSON"
@@ -151,10 +151,10 @@ class AmazonAdvertisingReports():
             response.requests
         """
                 # Access token
-        if self.access_token is None or self.expires_in > dt.datetime.today():
+        if self.access_token is None or self.expires_in < dt.datetime.today():
             self.get_access_token()
-            url = f'https://advertising-api.amazon.com/reporting/reports/{report_id}'
-
+            
+        url = f'https://advertising-api.amazon.com/reporting/reports/{report_id}'
         headers = {
             'Authorization': f'Bearer {self.access_token}',
             'Amazon-Advertising-API-ClientId': self.client_id,
@@ -179,6 +179,7 @@ class AmazonAdvertisingReports():
                 file.write(response.content)
             print("File downloaded successfully.")
             print(report_name)
+            return file_path
         else:
             print("Failed to download file.")
 
@@ -206,6 +207,9 @@ def unzip_to_memory(file_path):
 
 
 if __name__ == '__main__':
+    import postgresql
+    import time
+    import re
     reports = [
         ['spCampaigns', 'campaign'], # sponsored_products_campaign
         ['spCampaigns', 'adGroup'],  # sponsored_products_adgroup (useless?)
@@ -219,17 +223,54 @@ if __name__ == '__main__':
         ['spAdvertisedProduct', 'advertiser'], # sponsored_products_advertised_product
         ['spPurchasedProduct', 'asin']         # sponsored_products_purchased_product
     ]
-
+    # request reports
+    api = AmazonAdvertisingReports(config['client_id'], config['client_secret'], config['refresh_token'], config['profile_id'])
     report_ids = {}
     for report in reports:
         try:
             report_type, group_by = report[0], report[1]
-            response = request_report(config['access_token'], 'us', 'SPONSORED_PRODUCTS', report_type, group_by, start_date='2023-04-02', end_date='2023-04-30')
+            start_date, end_date = '2023-07-01', '2023-07-25'
+            response = api.request_report('us', 'SPONSORED_PRODUCTS', report_type, group_by, start_date, end_date)
             report_ids[response['name']] = response['reportId']
         except Exception as e:
             print(e)
+    time.sleep(60)
 
+    # download reports
     for report in report_ids:
+        print(f"Downloading Report {report}")
+        filename = report
         report_id = report_ids[report]
-        response = check_report_status(report_id, 'us')
-        download_report(response['url'], os.path.join(os.getcwd(), 'PPC Data', 'RAW Gzipped JSON Reports'), report)
+        response = api.check_report_status(report_id, 'us')
+        while response['status'] == 'PENDING':
+            print("Report Pending")
+            time.sleep(120)
+            response = api.check_report_status(report_id, 'us')
+        directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
+        file_path = api.download_report(response['url'], directory, filename)
+
+        # insert to db
+        report_names = {
+            "['campaign']": "sponsored_products_campaign_report",
+            "['adGroup']":  "sponsored_products_adgroup_report", #(useless?)
+            "['campaignPlacement']": "sponsored_products_placement_report", #(useless?)
+            "['campaign', 'adGroup']": "sponsored_products_campaign_adgroup_report",
+            "['campaign', 'campaignPlacement']": "sponsored_products_campaign_placement_report",
+            "['adGroup', 'campaignPlacement']": "sponsored_products_adgroup_placement_report",
+            "['campaign', 'adGroup', 'campaignPlacement']": "sponsored_products_campaign_adgroup_placement_report", #(most useful?)
+            "['targeting']": "sponsored_products_targeting_report",
+            "['searchTerm']": "sponsored_products_search_term_report",
+            "['advertiser']": "sponsored_products_advertised_product_report",
+            "['asin']": "sponsored_products_purchased_product_report"
+        }
+        with postgresql.setup_cursor('ppc').connect() as cur:
+            groupby = re.findall(r"(\[.*\])", filename)[0]
+            table_name = report_names[str(groupby)]
+            print("DROPPING TABLE")
+            cur.execute(f"DROP TABLE IF EXISTS {table_name}")
+            print(f"Creating table {table_name}")
+            create_table(cur, file_path, file_extension='json', table_name=table_name)
+            print("Updating triggers")
+            update_updated_at_trigger(cur, table_name)
+            print("Upserting bulk")
+            upsert_bulk(table_name=table_name, file_path=file_path)

@@ -91,7 +91,7 @@ def sql_to_dataframe(dbname, query, vars=None):
 def camel_to_snake(name):
     """Transform camelCase names to snake_case names"""
     name = re.sub(r'(?<!^)(?=[A-Z])', '_', name)
-    name = re.sub(r'(?<!^)(?=\d+[a-z]+)', r'_', name)
+    name = re.sub(r'(?<!^)(?<!\d)(?=\d+[a-z]*)', r'_',  name)
     # name = name.strip('_').replace('__', '_')
     return name.lower()
 
@@ -135,9 +135,10 @@ def sql_standardize(name, remove_parenthesis=True, remove_file_extension=True):
     # Remove parenthesis and inside of it
     if remove_parenthesis:
         name = re.sub(r'\(.+\)', '', name)
-    # Checks if camelCased
-    if is_camel_case(name):
-        return camel_to_snake(name)
+    # # Checks if camelCased
+    # if is_camel_case(name):
+    #     return camel_to_snake(name)
+    name = camel_to_snake(name)
     # Convert to lowercase
     name = name.lower()
     # Replace special characters with underscores
@@ -349,6 +350,7 @@ def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
 
     # Commit everything through cursor
     conn.commit()
+    cur.close()
     conn.close()
 
 
@@ -720,20 +722,22 @@ if __name__ == "__main__":
         for file in files:
             print(file)
             file_path = os.path.join(root, file)
-            groupby = re.findall(r"(\[.*\])", file)[0]
-            if '(US)' in file and '.gz' in file and groupby in reports:
+            groupby = re.findall(r"(\[.*\])", file)[0] if ".json" in file_path else ""
+            if '(US)' in file and '.gz' in file and groupby in reports and '2023-04' in file:
                 print(groupby)
                 table_name = reports[groupby]
-                print(f"Dropping Table {table_name}")
+                # print(f"Dropping Table {table_name}")
+                # try:
+                #     cur.execute(f'DROP TABLE IF EXISTS {table_name};')
+                # except:
+                #     print(f"TABLE DOES NOT EXISTS {table_name}")
                 try:
-                    cur.execute(f'DROP TABLE IF EXISTS {table_name};')
-                except:
-                    print(f"TABLE DOES NOT EXISTS {table_name}")
-                    pass
-                print(f"Creating table {table_name}")
-                create_table(cur, file_path, file_extension='json', table_name=table_name)
-                print("Updating triggers")
-                update_updated_at_trigger(cur, table_name)
-                print("Upserting bulk")
-                upsert_bulk(table_name, file_path)
+                    # print(f"Creating table {table_name}")
+                    # create_table(cur, file_path, file_extension='json', table_name=table_name)
+                    # print("Updating triggers")
+                    # update_updated_at_trigger(cur, table_name)
+                    print("Upserting bulk")
+                    upsert_bulk(table_name, file_path)
+                except Exception as e:
+                    print(f"Error. . .\n{e}")
     pass
