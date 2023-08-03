@@ -1,0 +1,33 @@
+from datetime import datetime, timedelta
+from sp_api.base import Marketplaces
+from sp_api.api import Orders
+from sp_api.util import throttle_retry, load_all_pages
+import postgresql
+
+
+@throttle_retry()
+@load_all_pages()
+def load_all_orders(**kwargs):
+    """
+    a generator function to return all pages, obtained by NextToken
+    """
+    return Orders().get_orders(**kwargs)
+
+
+with postgresql.setup_cursor() as cur:
+    cur.execute("SELECT MAX(last_update_date)::TIMESTAMP FROM orders.amazon;")
+    last_update_date = cur.fetchone()['max']
+
+orders = 0
+for page in load_all_orders(LastUpdatedAfter=(datetime.utcnow() - timedelta(days=290)).isoformat()):    # datetime.utcnow() - timedelta(days=290)).isoformat()
+    data = page.payload.get('Orders')
+    orders += len(data)
+    postgresql.upsert_bulk('orders.amazon', data, file_extension='json_normalize')
+    # if orders > 0:
+    #     break
+
+# # creates table initially
+# with postgresql.setup_cursor() as cur:
+#     cur.execute("DROP TABLE IF EXISTS orders.amazon;")
+#     postgresql.create_table(cur, data, table_name='orders.amazon', file_extension='json_normalize', keys='PRIMARY KEY (amazon_order_id)')
+#     postgresql.update_updated_at_trigger(cur, 'orders.amazon')
