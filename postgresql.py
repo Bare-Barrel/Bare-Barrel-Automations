@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import datetime as dt
 import re
-
+from functools import partial
 
 with open("config.json") as f:
     config = json.load(f)
@@ -23,7 +23,7 @@ class setup_cursor():
     Returns:
         conn.cursor()
     """
-    def __init__(self, dbname, autocommit=True, cursor_factory=psycopg2.extras.RealDictCursor):
+    def __init__(self, dbname=config['postgres_db'], autocommit=True, cursor_factory=psycopg2.extras.RealDictCursor):
         self.dbname = dbname
         self.autocommit = autocommit
         self.cursor_factory = cursor_factory
@@ -158,7 +158,8 @@ def create_table(cur, file_path, file_extension='auto', table_name='filename', c
     """Reads an excel, csv or json file, then normalizes table columns with generic data types
     IMPORTANT: Manually edit data types via excel"""
     # Read file
-    pd_read_file = {'csv': pd.read_csv, 'xls': pd.read_excel, 'xlsx': pd.read_excel, 'json': pd.read_json}
+    pd_read_file = {'csv': pd.read_csv, 'xls': pd.read_excel, 'xlsx': pd.read_excel, 
+                        'json': pd.read_json, 'json_normalize': partial(pd.json_normalize, sep='_')}
     if file_extension == 'auto':
         file_extension = file_path.split('.')[1] # ignores .gz
     data = pd_read_file[file_extension](file_path)
@@ -171,27 +172,45 @@ def create_table(cur, file_path, file_extension='auto', table_name='filename', c
 
     # Iterate through each column, cleans & identifies data type
     for column_name in data.columns:
-        # First, transforms date columns
+        # Transforms date columns
         if 'date' in column_name.lower():
-            data[column_name] = pd.to_datetime(data[column_name], errors='ignore', infer_datetime_format=True)
+            data[column_name] = pd.to_datetime(data[column_name], errors='ignore')
+        else:
+        # Transforms objects to numeric, if possible
+            data[column_name] = pd.to_numeric(data[column_name], errors='ignore')
+
         standardized_column_name = sql_standardize(column_name)
         data_type = str(data[column_name].dtype)
+
         # Map pandas data types to generic PostgreSQL data types
+        not_null_col_values = data.loc[data[column_name].notnull(), column_name]
         if 'int' in data_type:
-            int_bytes = int(data[column_name].max()).bit_length() / 8
             data_type = 'integer'
+            int_bytes = int(data[column_name].max()).bit_length() / 8
             if int_bytes > 4:
                 data_type = 'bigint'
+
         elif 'float' in data_type:
             data_type = 'numeric'
+
         elif 'datetime' in data_type:
-            # identifies if datetime col has time
-            has_time = ~(data[column_name].dt.time == pd.to_datetime('00:00:00').time()).all()
+            # identifies if datetime col has time and time zone
+            has_time = ~(not_null_col_values.dt.time == pd.to_datetime('00:00:00').time()).all()
             data_type = 'date'
             if has_time:
                 data_type = 'timestamp'
+                # check for time zone
+                has_time_zone = not_null_col_values.dt.tz
+                if has_time_zone:
+                    data_type = 'timestamp with time zone'
+
         elif 'bool' in data_type:
             data_type = 'boolean'
+
+        # jsonb / dict columns
+        elif not_null_col_values.transform(lambda x: x.apply(type).eq(dict)).all():
+            data_type = 'jsonb'
+
         else:
             data_type = 'text'
     
@@ -204,13 +223,13 @@ def create_table(cur, file_path, file_extension='auto', table_name='filename', c
     if updated_at:
         create_table_sql += "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
 
+    # Add primary and foreign key constraints
+    if keys:
+        create_table_sql += '\n' + keys + ', '
+
     # Remove trailing comma and space and enclose it
     create_table_sql = create_table_sql[:-2]
     create_table_sql += ")"
-
-    # Add primary and foreign key constraints
-    if keys:
-        created_table_sql += '\n' + keys
 
     # Complete the CREATE TABLE statement
     create_table_sql += ";"
@@ -244,7 +263,7 @@ def update_updated_at_trigger(cur, table_names=[]):
                     EXECUTE FUNCTION update_updated_at();""")
 
 
-def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
+def upsert_bulk(table_name, file_path, file_extension='auto', temp_path='temp.csv') -> None:
     """
     Fast way to upsert multiple entries at once
 
@@ -255,7 +274,9 @@ def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
     conn = psycopg2.connect(f"dbname={config['postgres_db']} user={config['postgres_user']} host={config['postgres_host']} port={config['postgres_port']} password={config['postgres_password']}")
     cur = conn.cursor()
     # Extracts table's schema (column names & data type)
-    cur.execute(f"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{table_name}';")
+    cur.execute(f"""SELECT column_name, data_type FROM information_schema.columns
+                    WHERE table_schema || '.' || table_name = '{table_name}'
+                    ORDER BY ordinal_position;""")
     schema = cur.fetchall()
 
     # SQL standardize and pop out `created_at` & `updated_at`
@@ -273,6 +294,7 @@ def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
         'date': 'datetime64[ns]',  # You can convert it to a proper Python date type if needed
         'timestamp': 'datetime64[ns]',  # You can convert it to a proper Python datetime type if needed
         'timestamp without time zone': 'datetime64[ns]',
+        'timestamp with time zone': 'datetime64[ns, ',  # Time zone will be filled out later
         'character varying': str
     }
 
@@ -287,7 +309,7 @@ def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
 
     # Creates temporary empty table with same columns and types as
     # the final table
-    temp_table_name = f"temp_{table_name}"
+    temp_table_name = "temp_" + re.sub('\W', '_', table_name)
     cur.execute(
         f"""
         CREATE TEMPORARY TABLE {temp_table_name} (LIKE {table_name})
@@ -299,8 +321,10 @@ def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
     )
     
     # Reads file
-    pd_read_file = {'csv': pd.read_csv, 'xls': pd.read_excel, 'xlsx': pd.read_excel, 'json': pd.read_json}
-    file_extension = file_path.split('.')[1]
+    pd_read_file = {'csv': pd.read_csv, 'xls': pd.read_excel, 'xlsx': pd.read_excel, 
+                    'json': pd.read_json, 'json_normalize': partial(pd.json_normalize, sep='_')}
+    if file_extension == 'auto':
+        file_extension = file_path.split('.')[1]
     data = pd_read_file[file_extension](file_path)
     # standardize column names
     data.columns = [sql_standardize(column) for column in data.columns]
@@ -309,10 +333,27 @@ def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
     # Casts appropriate data type
     for column in converted_schema:
         column_name, data_type = column[0], column[1]
+        print(column_name, data_type)
+        # creates null non-existing columns
+        if column_name not in data.columns:
+            data[column_name] = None
+            print(f"Missing column: {column_name}")
         # percentage str columns
         if data_type in (int, float) and data[column_name].dtype == 'object' and data[column_name].str.contains('%').any():
             data[column_name] = data[column_name].str.replace('%', '').astype(float) / 100
+        # inserts time zone
+        if data_type == 'datetime64[ns, ':
+            data_type += str(pd.to_datetime(data[column_name]).dt.tz) + ']'
         data[column_name] = data[column_name].astype(data_type)
+
+    # orders columns by their ordinal position
+    ordered_columns = [col[0] for col in schema]
+    missing_new_columns = [col for col in ordered_columns if col not in data.columns]
+    if missing_new_columns:
+        print(f"New columns not in the database: {missing_new_columns}")
+        raise Exception
+    data = data[ordered_columns]
+
 
     # transforms csv/excel to tab delimited file
     data.to_csv(temp_path, sep=',', index=False)
@@ -324,14 +365,11 @@ def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
         cur.copy_expert(f"COPY {temp_table_name} FROM STDIN WITH (FORMAT CSV, DELIMITER ',', QUOTE '\"')", file)
 
     # Execute a query to get the primary key constraint name
-    # cur.execute("""SELECT conname
-    #                 FROM pg_constraint
-    #                 WHERE conrelid = (
-    #                     SELECT oid
-    #                     FROM pg_class
-    #                     WHERE relname = %s
-    #                 ) AND contype = 'p';""", (table_name,))
-    # primary_key_constraint_name = cur.fetchone()[0]
+    cur.execute("""SELECT constraint_name
+                    FROM information_schema.table_constraints
+                    WHERE table_schema || '.' || table_name = %s
+                    AND constraint_type = 'PRIMARY KEY';""", (table_name,))
+    primary_key_constraint_name = cur.fetchone()[0]
 
     # Inserts copied data from the temporary table to the final table
     # updating existing values at each new conflict
@@ -339,8 +377,8 @@ def upsert_bulk(table_name, file_path, temp_path='temp.csv') -> None:
         f"""
         INSERT INTO {table_name}({', '.join(data.columns)})
         SELECT * FROM {temp_table_name}
+        ON CONFLICT ON CONSTRAINT {primary_key_constraint_name} DO UPDATE SET {update_set}
         """
-        # ON CONFLICT ON CONSTRAINT sponsored_products_search_term_report_pkey DO UPDATE SET {update_set}
     )
 
     # Drops temporary table (I believe this step is unnecessary,
@@ -547,7 +585,7 @@ def create_sponsored_products_amazon(cur):
 
 
 def insert_sponsored_products_amazon(cur):
-    jls_extract_var = """INSERT INTO metadata(table_name, created, column_details) 
+    query = """INSERT INTO metadata(table_name, created, column_details) 
                         VALUES ('sponsored_products_amazon', NOW(), 
                                 '{"start_date": "Start Date",
                                     "end_date": "End Date",
@@ -573,7 +611,7 @@ def insert_sponsored_products_amazon(cur):
                                     "other_sku_units": "7 Day Other SKU Units (#)",
                                     "advertised_sku_sales": "7 Day Advertised SKU Sales",
                                     "other_sku_sales": "7 Day Other SKU Sales"}');"""
-    cur.execute(jls_extract_var)
+    cur.execute(query)
 
 
 def create_sponsored_display_report(cur):
@@ -723,8 +761,8 @@ if __name__ == "__main__":
             print(file)
             file_path = os.path.join(root, file)
             groupby = re.findall(r"(\[.*\])", file)[0] if ".json" in file_path else ""
+            print(groupby)
             if '(US)' in file and '.gz' in file and groupby in reports and '2023-04' in file:
-                print(groupby)
                 table_name = reports[groupby]
                 # print(f"Dropping Table {table_name}")
                 # try:
@@ -736,7 +774,7 @@ if __name__ == "__main__":
                     # create_table(cur, file_path, file_extension='json', table_name=table_name)
                     # print("Updating triggers")
                     # update_updated_at_trigger(cur, table_name)
-                    print("Upserting bulk")
+                    print(f"Upserting bulk {file_path}")
                     upsert_bulk(table_name, file_path)
                 except Exception as e:
                     print(f"Error. . .\n{e}")
