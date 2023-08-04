@@ -21,7 +21,7 @@ class setup_cursor():
         autocommit (bool): Omits the conn.commit()
         cursor_factory (psycopg2.extras.*): By default, it's psycopg2.extras.NamedTupleCursor
     Returns:
-        conn.cursor()
+        conn [if autocommit is False], conn.cursor()
     """
     def __init__(self, dbname=config['postgres_db'], autocommit=True, cursor_factory=psycopg2.extras.RealDictCursor):
         self.dbname = dbname
@@ -38,7 +38,9 @@ class setup_cursor():
         )
         self.conn.set_session(autocommit=self.autocommit)
         self.cur = self.conn.cursor(cursor_factory=self.cursor_factory)
-        return self.cur
+        if self.autocommit:
+            return self.cur
+        return self.conn, self.cur
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type:
@@ -54,7 +56,12 @@ class setup_cursor():
         )
         self.conn.set_session(autocommit=self.autocommit)
         self.cur = self.conn.cursor(cursor_factory=self.cursor_factory)
-        return self.cur
+        if self.autocommit:
+            return self.cur
+        return self.conn, self.cur
+
+    def commit_transactions(self):
+        self.conn.commit()
 
     def close(self):
         # Closing cursor and connection
@@ -64,28 +71,19 @@ class setup_cursor():
             self.conn.close()
 
 
-def sql_to_dataframe(dbname, query, vars=None):
+def sql_to_dataframe(query, vars=None):
    """
    Import data from a PostgreSQL database using a SELECT query 
    """
-   try:
-        cur = setup_cursor(dbname=dbname, autocommit=True, 
-                                cursor_factory=psycopg2.extras.NamedTupleCursor).connect()
+   with setup_cursor(autocommit=True, cursor_factory=psycopg2.extras.NamedTupleCursor) as cur:
+        # The execute returns a list of tuples:
         cur.execute(query, vars)
-
-   except (Exception, psycopg2.DatabaseError) as error:
-        print("Error: %s" % error)
-        cur.close()
-        return None
-
-   # The execute returns a list of tuples:
-   tuples_list = cur.fetchall()
-   column_names = [column[0] for column in cur.description]
-   cur.close()
-
-   # Now we need to transform the list into a pandas DataFrame:
-   df = pd.DataFrame(tuples_list, columns=column_names)
-   return df
+        tuples_list = cur.fetchall()
+        column_names = [column[0] for column in cur.description]
+    
+        # Transforms the list into a pandas DataFrame:
+        df = pd.DataFrame(tuples_list, columns=column_names)
+        return df
 
 
 def camel_to_snake(name):
@@ -271,125 +269,117 @@ def upsert_bulk(table_name, file_path, file_extension='auto', temp_path='temp.cs
     file_path (str|os.path): path to csv / excel / json
     temp_path (str|os.path): save location for the temp csv file
     """
-    conn = psycopg2.connect(f"dbname={config['postgres_db']} user={config['postgres_user']} host={config['postgres_host']} port={config['postgres_port']} password={config['postgres_password']}")
-    cur = conn.cursor()
-    # Extracts table's schema (column names & data type)
-    cur.execute(f"""SELECT column_name, data_type FROM information_schema.columns
-                    WHERE table_schema || '.' || table_name = '{table_name}'
-                    ORDER BY ordinal_position;""")
-    schema = cur.fetchall()
+    with setup_cursor(autocommit=False, cursor_factory=psycopg2.extras.NamedTupleCursor) as (conn, cur):
+        # Extracts table's schema (column names & data type)
+        cur.execute(f"""SELECT column_name, data_type FROM information_schema.columns
+                        WHERE table_schema || '.' || table_name = '{table_name}'
+                        ORDER BY ordinal_position;""")
+        schema = cur.fetchall()
 
-    # SQL standardize and pop out `created_at` & `updated_at`
-    schema = [(sql_standardize(item[0]), item[-1]) for item in schema if item[0] not in ('created_at', 'updated_at')]
+        # SQL standardize and pop out `created_at` & `updated_at`
+        schema = [(sql_standardize(item[0]), item[-1]) for item in schema if item[0] not in ('created_at', 'updated_at')]
 
-    # Mapping PostgreSQL data types to Python/pandas data types
-    type_mapping = {
-        'integer': int,
-        'bigint': int, 
-        'smallint': int,
-        'numeric': float,
-        'real': float,
-        'double precision': float,
-        'boolean': bool,
-        'date': 'datetime64[ns]',  # You can convert it to a proper Python date type if needed
-        'timestamp': 'datetime64[ns]',  # You can convert it to a proper Python datetime type if needed
-        'timestamp without time zone': 'datetime64[ns]',
-        'timestamp with time zone': 'datetime64[ns, ',  # Time zone will be filled out later
-        'character varying': str
-    }
+        # Mapping PostgreSQL data types to Python/pandas data types
+        type_mapping = {
+            'integer': int,
+            'bigint': int, 
+            'smallint': int,
+            'numeric': float,
+            'real': float,
+            'double precision': float,
+            'boolean': bool,
+            'date': 'datetime64[ns]',  # You can convert it to a proper Python date type if needed
+            'timestamp': 'datetime64[ns]',  # You can convert it to a proper Python datetime type if needed
+            'timestamp without time zone': 'datetime64[ns]',
+            'timestamp with time zone': 'datetime64[ns, ',  # Time zone will be filled out later
+            'character varying': str
+        }
 
-    # Convert schema data types to Python data types
-    converted_schema = []
-    for column_name, data_type in schema:
-        python_data_type = type_mapping.get(data_type, str) # str if not exists
-        converted_schema.append((column_name, python_data_type))
+        # Convert schema data types to Python data types
+        converted_schema = []
+        for column_name, data_type in schema:
+            python_data_type = type_mapping.get(data_type, str) # str if not exists
+            converted_schema.append((column_name, python_data_type))
 
-    # Create string with set of columns to be updated
-    update_set = ", ".join([f"{column[0]}=EXCLUDED.{column[0]}" for column in converted_schema])
+        # Create string with set of columns to be updated
+        update_set = ", ".join([f"{column[0]}=EXCLUDED.{column[0]}" for column in converted_schema])
 
-    # Creates temporary empty table with same columns and types as
-    # the final table
-    temp_table_name = "temp_" + re.sub('\W', '_', table_name)
-    cur.execute(
-        f"""
-        CREATE TEMPORARY TABLE {temp_table_name} (LIKE {table_name})
-        ON COMMIT DROP;
-        ALTER TABLE {temp_table_name}
-            DROP COLUMN IF EXISTS created_at,
-            DROP COLUMN IF EXISTS updated_at;
-        """
-    )
+        # Creates temporary empty table with same columns and types as
+        # the final table
+        temp_table_name = "temp_" + re.sub('\W', '_', table_name)
+        cur.execute(
+            f"""
+            CREATE TEMPORARY TABLE {temp_table_name} (LIKE {table_name})
+            ON COMMIT PRESERVE ROWS;
+            ALTER TABLE {temp_table_name}
+                DROP COLUMN IF EXISTS created_at,
+                DROP COLUMN IF EXISTS updated_at;
+            """
+        )
+        
+        # Reads file
+        pd_read_file = {'csv': pd.read_csv, 'xls': pd.read_excel, 'xlsx': pd.read_excel, 
+                        'json': pd.read_json, 'json_normalize': partial(pd.json_normalize, sep='_')}
+        if file_extension == 'auto':
+            file_extension = file_path.split('.')[1]
+        data = pd_read_file[file_extension](file_path)
+        # standardize column names
+        data.columns = [sql_standardize(column) for column in data.columns]
+        print(data.columns)
     
-    # Reads file
-    pd_read_file = {'csv': pd.read_csv, 'xls': pd.read_excel, 'xlsx': pd.read_excel, 
-                    'json': pd.read_json, 'json_normalize': partial(pd.json_normalize, sep='_')}
-    if file_extension == 'auto':
-        file_extension = file_path.split('.')[1]
-    data = pd_read_file[file_extension](file_path)
-    # standardize column names
-    data.columns = [sql_standardize(column) for column in data.columns]
-    print(data.columns)
- 
-    # Casts appropriate data type
-    for column in converted_schema:
-        column_name, data_type = column[0], column[1]
-        print(column_name, data_type)
-        # creates null non-existing columns
-        if column_name not in data.columns:
-            data[column_name] = None
-            print(f"Missing column: {column_name}")
-        # percentage str columns
-        if data_type in (int, float) and data[column_name].dtype == 'object' and data[column_name].str.contains('%').any():
-            data[column_name] = data[column_name].str.replace('%', '').astype(float) / 100
-        # inserts time zone
-        if data_type == 'datetime64[ns, ':
-            data_type += str(pd.to_datetime(data[column_name]).dt.tz) + ']'
-        data[column_name] = data[column_name].astype(data_type)
+        # Casts appropriate data type
+        for column in converted_schema:
+            column_name, data_type = column[0], column[1]
+            print(column_name, data_type)
+            # creates null non-existing columns
+            if column_name not in data.columns:
+                data[column_name] = None
+                print(f"Missing column: {column_name}")
+            # percentage str columns
+            if data_type in (int, float) and data[column_name].dtype == 'object' and data[column_name].str.contains('%').any():
+                data[column_name] = data[column_name].str.replace('%', '').astype(float) / 100
+            # inserts time zone
+            if data_type == 'datetime64[ns, ':
+                data_type += str(pd.to_datetime(data[column_name]).dt.tz) + ']'
+            data[column_name] = data[column_name].astype(data_type)
 
-    # orders columns by their ordinal position
-    ordered_columns = [col[0] for col in schema]
-    missing_new_columns = [col for col in ordered_columns if col not in data.columns]
-    if missing_new_columns:
-        print(f"New columns not in the database: {missing_new_columns}")
-        raise Exception
-    data = data[ordered_columns]
+        # orders columns by their ordinal position
+        ordered_columns = [col[0] for col in schema]
+        missing_new_columns = [col for col in ordered_columns if col not in data.columns]
+        if missing_new_columns:
+            print(f"New columns not in the database: {missing_new_columns}")
+            raise Exception
+        data = data[ordered_columns]
 
 
-    # transforms csv/excel to tab delimited file
-    data.to_csv(temp_path, sep=',', index=False)
+        # transforms csv/excel to tab delimited file
+        data.to_csv(temp_path, sep=',', index=False)
 
-    # Copy stream data to the created temporary table in DB
-    with open(temp_path, 'rb') as file:
-        next(file)
-        # cur.copy_from(file, temp_table_name, null='', sep=',')
-        cur.copy_expert(f"COPY {temp_table_name} FROM STDIN WITH (FORMAT CSV, DELIMITER ',', QUOTE '\"')", file)
+        # Copy stream data to the created temporary table in DB
+        with open(temp_path, 'rb') as file:
+            next(file)
+            # cur.copy_from(file, temp_table_name, null='', sep=',')
+            cur.copy_expert(f"COPY {temp_table_name} FROM STDIN WITH (FORMAT CSV, DELIMITER ',', QUOTE '\"')", file)
 
-    # Execute a query to get the primary key constraint name
-    cur.execute("""SELECT constraint_name
-                    FROM information_schema.table_constraints
-                    WHERE table_schema || '.' || table_name = %s
-                    AND constraint_type = 'PRIMARY KEY';""", (table_name,))
-    primary_key_constraint_name = cur.fetchone()[0]
+        # Execute a query to get the primary key constraint name
+        cur.execute("""SELECT constraint_name
+                        FROM information_schema.table_constraints
+                        WHERE table_schema || '.' || table_name = %s
+                        AND constraint_type = 'PRIMARY KEY';""", (table_name,))
+        primary_key_constraint_name = cur.fetchone()[0]
 
-    # Inserts copied data from the temporary table to the final table
-    # updating existing values at each new conflict
-    cur.execute(
-        f"""
-        INSERT INTO {table_name}({', '.join(data.columns)})
-        SELECT * FROM {temp_table_name}
-        ON CONFLICT ON CONSTRAINT {primary_key_constraint_name} DO UPDATE SET {update_set}
-        """
-    )
+        # Inserts copied data from the temporary table to the final table
+        # updating existing values at each new conflict
+        cur.execute(
+            f"""
+            INSERT INTO {table_name}({', '.join(data.columns)})
+            SELECT * FROM {temp_table_name}
+            ON CONFLICT ON CONSTRAINT {primary_key_constraint_name} DO UPDATE SET {update_set}
+            """
+        )
 
-    # Drops temporary table (I believe this step is unnecessary,
-    # but tables sizes where growing without any new data modifications
-    # if this command isn't executed)
-    cur.execute(f"DROP TABLE {temp_table_name}")
-
-    # Commit everything through cursor
-    conn.commit()
-    cur.close()
-    conn.close()
+        # Drops temporary table on commit
+        conn.commit()
 
 
 def create_metadata(cur):
