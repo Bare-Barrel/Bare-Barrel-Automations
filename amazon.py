@@ -36,14 +36,14 @@ def is_utf8(s):
 
 def insert_sqp_reports(csv_path : str) -> None:
     """Insert Search Query Performance Reports to db"""
-    cur = setup_cursor('ppc').connect()
+    cur = setup_cursor().connect()
     filename = os.path.basename(csv_path)
     metadata = pd.read_csv(csv_path, nrows=0)
     data     = pd.read_csv(csv_path, skiprows=1)
     # extracts info from filename
     country = filename.split('_')[0]
     view = 'brand' if 'brand' in filename.lower() else 'asin'
-    table_name = 'search_query_performance_{}_view'.format(view)
+    table_name = 'brand_analytics.search_query_performance_{}_view'.format(view)
     print(f"\tINSERTING {metadata.columns} to {table_name}")
     # cleans & inserts metadata
     data['country'] = country

@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 import datetime as dt
 import re
+import io
+import csv
 from functools import partial
 
 with open("config.json") as f:
@@ -152,15 +154,20 @@ def sql_standardize(name, remove_parenthesis=True, remove_file_extension=True):
     
 
 
-def create_table(cur, file_path, file_extension='auto', table_name='filename', created_at=True, updated_at=True, keys=None):
+def create_table(cur, file_path=None, data=None, file_extension='auto', table_name='filename', created_at=True, updated_at=True, keys=None):
     """Reads an excel, csv or json file, then normalizes table columns with generic data types
     IMPORTANT: Manually edit data types via excel"""
     # Read file
     pd_read_file = {'csv': pd.read_csv, 'xls': pd.read_excel, 'xlsx': pd.read_excel, 
                         'json': pd.read_json, 'json_normalize': partial(pd.json_normalize, sep='_')}
-    if file_extension == 'auto':
+    if file_extension == 'auto' and file_path:
         file_extension = file_path.split('.')[1] # ignores .gz
-    data = pd_read_file[file_extension](file_path)
+    if file_path:
+        data = pd_read_file[file_extension](file_path)
+
+    if data.empty:
+        print("The Dataframe is empty.\n\tCancelling table creation. . .")
+        return
 
     # Create the SQL CREATE TABLE statement
     if table_name == 'filename':
@@ -184,7 +191,7 @@ def create_table(cur, file_path, file_extension='auto', table_name='filename', c
         not_null_col_values = data.loc[data[column_name].notnull(), column_name]
         if 'int' in data_type:
             data_type = 'integer'
-            int_bytes = int(data[column_name].max()).bit_length() / 8
+            int_bytes = int(data[column_name].fillna(0).max()).bit_length() / 8
             if int_bytes > 4:
                 data_type = 'bigint'
 
@@ -281,9 +288,9 @@ def upsert_bulk(table_name, file_path, file_extension='auto', temp_path='temp.cs
 
         # Mapping PostgreSQL data types to Python/pandas data types
         type_mapping = {
-            'integer': int,
-            'bigint': int, 
-            'smallint': int,
+            'integer': 'Int64',
+            'bigint': 'Int64', 
+            'smallint': 'Int64',
             'numeric': float,
             'real': float,
             'double precision': float,
@@ -351,22 +358,36 @@ def upsert_bulk(table_name, file_path, file_extension='auto', temp_path='temp.cs
             raise Exception
         data = data[ordered_columns]
 
+        # Create an in-memory CSV
+        csv_buffer = io.StringIO()
 
         # transforms csv/excel to tab delimited file
-        data.to_csv(temp_path, sep=',', index=False)
+        data.to_csv(csv_buffer, index=False, header=False, quoting=csv.QUOTE_NONNUMERIC)
+
+        # removes nulls=""
+        csv_buffer.seek(0)
+        lines = csv_buffer.readlines()
+        new_lines = [line.replace(',"",', ',,') for line in lines]
+        csv_buffer.close()
+    
+        # Create a new in-memory CSV buffer
+        new_csv_buffer = io.StringIO()
+        new_csv_buffer.writelines(new_lines)
+        new_csv_buffer.seek(0)
 
         # Copy stream data to the created temporary table in DB
-        with open(temp_path, 'rb') as file:
-            next(file)
-            # cur.copy_from(file, temp_table_name, null='', sep=',')
-            cur.copy_expert(f"COPY {temp_table_name} FROM STDIN WITH (FORMAT CSV, DELIMITER ',', QUOTE '\"')", file)
+        cur.copy_expert(f"COPY {temp_table_name} FROM STDIN WITH (FORMAT CSV, DELIMITER ',', QUOTE '\"')", new_csv_buffer)
+        # with open(temp_path, 'rb') as file:
+        #     next(file)
+        #     # cur.copy_from(file, temp_table_name, null='', sep=',')
+        #     cur.copy_expert(f"COPY {temp_table_name} FROM STDIN WITH (FORMAT CSV, DELIMITER ',', QUOTE '\"')", file)
 
         # Execute a query to get the primary key constraint name
         cur.execute("""SELECT constraint_name
                         FROM information_schema.table_constraints
                         WHERE table_schema || '.' || table_name = %s
                         AND constraint_type = 'PRIMARY KEY';""", (table_name,))
-        primary_key_constraint_name = cur.fetchone()[0]
+        primary_key_constraint_name = cur.fetchone()
 
         # Inserts copied data from the temporary table to the final table
         # updating existing values at each new conflict
@@ -374,7 +395,10 @@ def upsert_bulk(table_name, file_path, file_extension='auto', temp_path='temp.cs
             f"""
             INSERT INTO {table_name}({', '.join(data.columns)})
             SELECT * FROM {temp_table_name}
-            ON CONFLICT ON CONSTRAINT {primary_key_constraint_name} DO UPDATE SET {update_set}
+            {
+                f"ON CONFLICT ON CONSTRAINT {primary_key_constraint_name[0]} DO UPDATE SET {update_set};" 
+                if primary_key_constraint_name else ";"
+            }
             """
         )
 

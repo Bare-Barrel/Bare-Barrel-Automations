@@ -311,7 +311,7 @@ async def main():
             start_date += dt.timedelta(days=7)
             # date_report = amazon.end_of_week_date(start_date)
             # date_report = str(date_report['reporting_date'])
-        task2 = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US'], date_reports=sundays, view='asin'))
+        task2 = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US'], date_reports=sundays, view='brand'))
         # to insert to db OR NOT????
         # cerebro_temps = await task1
         sqp_temps     = await task2

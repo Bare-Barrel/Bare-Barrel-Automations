@@ -4,13 +4,12 @@ import pandas as pd
 import datetime as dt
 import io
 import gzip
+import time
+from ad_api.api.reports import Reports
+from ad_api.base import Marketplaces
 
 
-amazon_ads_api_config_path = "amazon_ads_api_env.json"
-with open(amazon_ads_api_config_path) as f:
-    config = json.load(f)
-
-# Constuct all columns by `group_by`
+# Sponsored ads (version 3) group by metrics
 campaign_base_metrics = 'impressions, clicks, cost, purchases1d, purchases7d, purchases14d, purchases30d, purchasesSameSku1d, purchasesSameSku7d, purchasesSameSku14d, purchasesSameSku30d, unitsSoldClicks1d, unitsSoldClicks7d, unitsSoldClicks14d, unitsSoldClicks30d, sales1d, sales7d, sales14d, sales30d, attributedSalesSameSku1d, attributedSalesSameSku7d, attributedSalesSameSku14d, attributedSalesSameSku30d, unitsSoldSameSku1d, unitsSoldSameSku7d, unitsSoldSameSku14d, unitsSoldSameSku30d, kindleEditionNormalizedPagesRead14d, kindleEditionNormalizedPagesRoyalties14d, date, startDate, endDate, campaignBiddingStrategy, costPerClick, clickThroughRate, spend'
 campaign_addtl_metrics = 'campaignName, campaignId, campaignStatus, campaignBudgetAmount, campaignBudgetType, campaignRuleBasedBudgetAmount, campaignApplicableBudgetRuleId, campaignApplicableBudgetRuleName, campaignBudgetCurrencyCode, topOfSearchImpressionShare'
 adGroup_addtl_metrics = 'adGroupName, adGroupId, adStatus'
@@ -23,20 +22,27 @@ asin_base_metrics = 'date, startDate, endDate, portfolioId, campaignName, campai
 purchasedAsin_base_metrics = 'campaignId, adGroupId, date, startDate, endDate, campaignBudgetCurrencyCode, campaignName, adGroupName, attributionType, purchasedAsin, productName, productCategory, sales14d, orders14d, unitsSold14d, newToBrandSales14d, newToBrandPurchases14d, newToBrandUnitsSold14d, newToBrandSalesPercentage14d, newToBrandPurchasesPercentage14d, newToBrandUnitsSoldPercentage14d'
 
 
-columns = {
-    'campaign': f'{campaign_addtl_metrics}, {campaign_base_metrics}',
-    'adGroup': f'{adGroup_addtl_metrics}, {campaign_base_metrics}',
-    'campaign, adGroup': f'{campaign_addtl_metrics}, {adGroup_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '),
-    'campaignPlacement': f'{campaignPlacement_addtl_metrics}, {campaign_base_metrics}',
-    'campaign, campaignPlacement': f'{campaign_addtl_metrics}, {campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '),
-    'adGroup, campaignPlacement': f'{campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '),
-    'campaign, adGroup, campaignPlacement': f'{campaign_addtl_metrics}, {campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '),
-    'targeting': f'{targeting_base_metrics}, {targeting_addtl_metrics}',
-    'searchTerm': searchTerm_base_metrics,
-    'advertiser': advertiser_base_metrics,
-    'asin': asin_base_metrics,
-    'purchasedAsin': purchasedAsin_base_metrics
+metrics = {
+    # Sponsored Products (version 3)
+    'SPONSORED_PRODUCTS': {
+        'campaign': f'{campaign_addtl_metrics}, {campaign_base_metrics}',
+        'adGroup': f'{adGroup_addtl_metrics}, {campaign_base_metrics}',
+        'campaign, adGroup': f'{campaign_addtl_metrics}, {adGroup_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '),
+        'campaignPlacement': f'{campaignPlacement_addtl_metrics}, {campaign_base_metrics}',     # useless? No campaignIds/adGroupIds
+        'campaign, campaignPlacement': f'{campaign_addtl_metrics}, {campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '),
+        'adGroup, campaignPlacement': f'{campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '), # can't add adGroup addt'l metrics == campaignPlacement
+        'campaign, adGroup, campaignPlacement': f'{campaign_addtl_metrics}, {campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '), # Can't add adGrouop add'tl metrics; == campaign, campaignPlacement
+        'targeting': f'{targeting_base_metrics}, {targeting_addtl_metrics}',
+        'searchTerm': searchTerm_base_metrics,
+        'advertiser': advertiser_base_metrics,
+        'asin': asin_base_metrics
+    },
+    # Sponsored Brands Video (version 3)
+    'SPONSORED_BRANDS': {
+        'purchasedAsin': purchasedAsin_base_metrics
+    }
 }
+
 
 filters = {
     'spSearchTerm': ['TARGETING_EXPRESSION', 'TARGETING_EXPRESSION_PREDEFINED'],
@@ -44,169 +50,91 @@ filters = {
 }
 
 
-class AmazonAdvertisingReports():
-    def __init__(self, client_id, client_secret, refresh_token, profile_id):
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.refresh_token = refresh_token
-        self.profile_id = profile_id
-        self.access_token = None
-        self.expires_in = None
-
-    def get_access_token(self):
-        """Retrieves access token using refresh token.
-            Access token expires every hour."""
-        print("Getting access_token")
-        if self.access_token and self.expires_in > dt.datetime.today():
-            return self.access_token
-        url = 'https://api.amazon.com/auth/o2/token'
-        data = {
-            'grant_type': 'refresh_token',
-            'refresh_token': self.refresh_token,
-            'client_id': self.client_id,
-            'client_secret': self.client_secret
-        }
-        response = requests.post(url, data=data)
-        response_json = response.json()
-        self.access_token = response_json['access_token']
-        self.expires_in = dt.datetime.today() + dt.timedelta(seconds=response_json['expires_in'])
-        print(f"Token expires in {self.expires_in}")
-        return self.access_token
-
-    def request_report(self, marketplace, ad_product, report_type_id, group_by, start_date, end_date, time_unit='DAILY'):
-        """
-        Requests a Sponsored Products report.
-        Request the creation of a performance report for all entities of a single type which have
-        performance data to report. Record types can be one of campaigns, adGroups, keywords, 
-        productAds, asins, and targets. Note that for asin reports, the report currently can not 
-        include metrics associated with both keywords and targets. If the targetingId value is set 
-        in the request, the report filters on targets and does not return sales associated with keywords. 
-        If the targetingId value is not set in the request, the report filters on keywords and does not 
-        return sales associated with targets. Therefore, the default behavior filters the report on keywords. 
-        Also note that if both keywordId and targetingId values are passed, the report filters on targets only 
-        and does not return keywords.
-
-        Args:
-            marketplace (str): ['us', 'ca']. It will retrieve the profile_id of the marketplace
-            ad_product (str): ["SPONSORED_PRODUCTS", "SPONSORED_BRANDS", "SPONSORED_DISPLAY"]
-            report_type_id (str): ['spCampaigns', 'spTargeting', 'spSearchTerm', 'spAdvertisedProduct', 'spPurchasedProduct', 'sbPurchasedProduct']
-            group_by (str): will convert into a list spCampaigns: [campaign, adGroup, ad, productAds, placement, category, asin]
-        Returns:
-            requests.response
-        """
-        # Access token
-        if self.access_token is None or self.expires_in < dt.datetime.today():
-            self.get_access_token()
-
-        # Selects date columns as per time unit
-        for col in columns:
-            if time_unit == 'DAILY':
-                columns[col] = columns[col].replace(' startDate, endDate,', '')
-            elif time_unit == 'SUMMARY':
-                columns[col] = columns[col].replace(' date,', '')
-
-        # Post API
-        url = 'https://advertising-api.amazon.com/reporting/reports'
-        headers = {
-            'Authorization': f'Bearer {self.access_token}',
-            'Amazon-Advertising-API-ClientId': self.client_id,
-            'Amazon-Advertising-API-Scope': self.profile_id[marketplace]
-        }
-        body = {
-            "name": f"{ad_product} ({marketplace.upper()}) {report_type_id} {str(group_by.split(', '))} {start_date} - {end_date}",
-            "startDate": start_date,
-            "endDate": end_date,
-            "configuration":{
-                "adProduct": ad_product,
-                "groupBy": group_by.split(', '),    # converts to list
-                "columns": columns[group_by].split(', '),
-                # "filters": [
-                #     {
-                #         "field": "keywordType",
-                #         "values": filters[report_type_id]
-                #     }
-                # ],
-                "reportTypeId": report_type_id,
-                "timeUnit": time_unit,
-                "format": "GZIP_JSON"
-            }
-        }
-        response = requests.post(url, headers=headers, data=json.dumps(body))
-        response_json = response.json()
-        print(response.text)
-        report_ids[response_json['name']] = response_json['configuration']['reportTypeId']
-        return response_json
-
-
-    def check_report_status(self, report_id, marketplace):
-        """
-        Once you have made a successful POST call, report generation can take up to three hours.
-        You can check the report generation status by using the reportId returned in the initial 
-        request to call the GET report endpoint: GET /reporting/reports/{reportId}.
-        If the report is still generating, status is set to PENDING or PROCESSING.
-        When your report is ready to download, status returns as COMPLETED, and you will see an 
-        address in the url field.
-
-        Args:
-            report_id (str): id of the report to be downloaded after posting a request report
-
-        Returns:
-            response.requests
-        """
-                # Access token
-        if self.access_token is None or self.expires_in < dt.datetime.today():
-            self.get_access_token()
-            
-        url = f'https://advertising-api.amazon.com/reporting/reports/{report_id}'
-        headers = {
-            'Authorization': f'Bearer {self.access_token}',
-            'Amazon-Advertising-API-ClientId': self.client_id,
-            'Amazon-Advertising-API-Scope': self.profile_id[marketplace]
-        }
-        response = requests.get(url, headers=headers)
-        response_json = response.json()
-        print(response.text)
-        return response_json
-
-
-    def download_report(self, url, directory, report_name):
-        """
-        Downloads the .json.gz file report
-        """
-        # Download the report
-        response = requests.get(url)
-        # Save it to .json.gz zip file
-        if response.status_code == 200:
-            file_path = os.path.join(directory, report_name + '.json.gz')
-            with open(file_path, 'wb') as file:
-                file.write(response.content)
-            print("File downloaded successfully.")
-            print(report_name)
-            return file_path
-        else:
-            print("Failed to download file.")
-
-
-def unzip_to_memory(file_path):
+def request_report(ad_product, report_type_id, group_by, start_date, end_date, time_unit='DAILY', marketplace='US'):
     """
-    Unzips a gzip-compressed file into memory.
+    Requests a Sponsored Products report.
+    Request the creation of a performance report for all entities of a single type which have
+    performance data to report. Record types can be one of campaigns, adGroups, keywords, 
+    productAds, asins, and targets. Note that for asin reports, the report currently can not 
+    include metrics associated with both keywords and targets. If the targetingId value is set 
+    in the request, the report filters on targets and does not return sales associated with keywords. 
+    If the targetingId value is not set in the request, the report filters on keywords and does not 
+    return sales associated with targets. Therefore, the default behavior filters the report on keywords. 
+    Also note that if both keywordId and targetingId values are passed, the report filters on targets only 
+    and does not return keywords.
 
     Args:
-        file_path (str): The path to the gzip-compressed file.
+        ad_product (str): ["SPONSORED_PRODUCTS", "SPONSORED_BRANDS", "SPONSORED_DISPLAY"]
+        report_type_id (str): ['spCampaigns', 'spTargeting', 'spSearchTerm', 'spAdvertisedProduct', 'spPurchasedProduct', 'sbPurchasedProduct']
+        group_by (str): will convert into a list spCampaigns: [campaign, adGroup, ad, productAds, placement, category, asin]
+        marketplace (str): ['US', 'CA']. It will retrieve the profile_id of the marketplace
+    Returns:
+        ad_api.api.ApiResponse.payload (dict)
+    """
+    # Selects date columns as per time unit
+    if time_unit == 'DAILY':
+        columns = metrics[ad_product][group_by].replace(' startDate, endDate,', '')
+    elif time_unit == 'SUMMARY':
+        columns = metrics[ad_product][group_by].replace(' date,', '')
+
+    body = {
+        "name": f"{ad_product} ({marketplace}) {report_type_id} {str(group_by.split(', '))} {start_date} - {end_date}",
+        "startDate": start_date,
+        "endDate": end_date,
+        "configuration":{
+            "adProduct": ad_product,
+            "groupBy": group_by.split(', '),    # converts to list
+            "columns": columns.split(', '),
+            # "filters": [
+            #     {
+            #         "field": "keywordType",
+            #         "values": filters[report_type_id]
+            #     }
+            # ],
+            "reportTypeId": report_type_id,
+            "timeUnit": time_unit,
+            "format": "GZIP_JSON"
+        }
+    }
+    print(body)
+    response = Reports(marketplace=Marketplaces[marketplace]).post_report(body=body)
+    payload = response.payload
+    return payload
+
+
+def download_report(report_id, directory, report_name, marketplace='US'):
+    """
+    Once you have made a successful POST call, report generation can take up to three hours.
+    You can check the report generation status by using the reportId returned in the initial 
+    request to call the GET report endpoint: GET /reporting/reports/{reportId}.
+    If the report is still generating, status is set to PENDING or PROCESSING.
+    When your report is ready to download, status returns as COMPLETED, and you will see an 
+    address in the url field.
+
+    Args:
+        report_id (str): id of the report to be downloaded after posting a request report
 
     Returns:
-        file_like_object (_io.BytesIO): The uncompressed file content in memory.
+        file_path (str)
     """
-    with open(file_path, 'rb') as file:
-        file_content = file.read()
-    # Create an in-memory stream from the file content
-    file_stream = io.BytesIO(file_content)
-    # Create a gzip file object
-    gzip_file = gzip.GzipFile(fileobj=file_stream)
-    # Read the uncompressed content from the gzip file object
-    uncompressed_content = gzip_file.read()
-    file_like_object = io.BytesIO(uncompressed_content)  # Use io.BytesIO for binary content
-    return file_like_object
+    while True:
+        print(f"Downloading {report_name}")
+        response = Reports(marketplace=Marketplaces[marketplace]).get_report(reportId=report_id)
+        status, url = response.payload['status'], response.payload['url']
+        print(f"\tReport status: {status}")
+        if status == 'COMPLETED':
+            # Download the report
+            response = requests.get(url)
+            if response.status_code == 200:
+                file_path = os.path.join(directory, report_name + '.json.gz')
+                with open(file_path, 'wb') as file:
+                    file.write(response.content)
+                print("File downloaded successfully.")
+                return file_path
+            else:
+                print("Failed to download file.")
+                print("\tRedownloading...")
+        time.sleep(30)
 
 
 if __name__ == '__main__':
@@ -227,13 +155,12 @@ if __name__ == '__main__':
         ['spPurchasedProduct', 'asin']         # sponsored_products_purchased_product
     ]
     # request reports
-    api = AmazonAdvertisingReports(config['client_id'], config['client_secret'], config['refresh_token'], config['profile_id'])
     report_ids = {}
     for report in reports:
         try:
             report_type, group_by = report[0], report[1]
             start_date, end_date = '2023-07-01', '2023-07-25'
-            response = api.request_report('us', 'SPONSORED_PRODUCTS', report_type, group_by, start_date, end_date)
+            response = request_report('SPONSORED_PRODUCTS', report_type, group_by, start_date, end_date, martketplace='US')
             report_ids[response['name']] = response['reportId']
         except Exception as e:
             print(e)
@@ -244,37 +171,33 @@ if __name__ == '__main__':
         print(f"Downloading Report {report}")
         filename = report
         report_id = report_ids[report]
-        response = api.check_report_status(report_id, 'us')
-        while response['status'] == 'PENDING':
-            print("Report Pending")
-            time.sleep(120)
-            response = api.check_report_status(report_id, 'us')
         directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
-        file_path = api.download_report(response['url'], directory, filename)
+        file_path = download_report(report_id, directory, filename, 'US')
 
         # insert to db
         report_names = {
-            "['campaign']": "sponsored_products_campaign_report",
-            "['adGroup']":  "sponsored_products_adgroup_report", #(useless?)
-            "['campaignPlacement']": "sponsored_products_placement_report", #(useless?)
-            "['campaign', 'adGroup']": "sponsored_products_campaign_adgroup_report",
-            "['campaign', 'campaignPlacement']": "sponsored_products_campaign_placement_report",
-            "['adGroup', 'campaignPlacement']": "sponsored_products_adgroup_placement_report",
-            "['campaign', 'adGroup', 'campaignPlacement']": "sponsored_products_campaign_adgroup_placement_report", #(most useful?)
-            "['targeting']": "sponsored_products_targeting_report",
-            "['searchTerm']": "sponsored_products_search_term_report",
-            "['advertiser']": "sponsored_products_advertised_product_report",
-            "['asin']": "sponsored_products_purchased_product_report",
-            "['purchasedAsin']": "sponsored_brands_purchased_product_report"
+            "['campaign']": "sponsored_products.campaign",
+            "['adGroup']":  "sponsored_products.adgroup", #(useless?)
+            # "['campaignPlacement']": "sponsored_products.placement", # USELESS no pkey (campaignId/adgroupId)
+            "['campaign', 'adGroup']": "sponsored_products.campaign_adgroup",
+            "['campaign', 'campaignPlacement']": "sponsored_products.campaign_placement",
+            "['adGroup', 'campaignPlacement']": "sponsored_products.adgroup_placement", # can't add adgroup additional metrics (==campaign_placement)
+            "['campaign', 'adGroup', 'campaignPlacement']": "sponsored_products.campaign_adgroup_placement", # cannot add adgroup additional metrics (==campaign_placement)
+            "['targeting']": "sponsored_products.targeting",
+            "['searchTerm']": "sponsored_products.search_term",
+            "['advertiser']": "sponsored_products.advertised_product",
+            "['asin']": "sponsored_products.purchased_product",
+            "['purchasedAsin']": "sponsored_brands.purchased_product"
         }
-        with postgresql.setup_cursor('ppc').connect() as cur:
-            groupby = re.findall(r"(\[.*\])", filename)[0]
-            table_name = report_names[str(groupby)]
-            print("DROPPING TABLE")
-            cur.execute(f"DROP TABLE IF EXISTS {table_name}")
-            print(f"Creating table {table_name}")
-            create_table(cur, file_path, file_extension='json', table_name=table_name)
-            print("Updating triggers")
-            update_updated_at_trigger(cur, table_name)
+
+        with postgresql.setup_cursor() as cur:
+            # groupby = re.findall(r"(\[.*\])", filename)[0]
+            # table_name = report_names[str(groupby)]
+            # print("DROPPING TABLE")
+            # cur.execute(f"DROP TABLE IF EXISTS {table_name}")
+            # print(f"Creating table {table_name}")
+            # create_table(cur, file_path, file_extension='json', table_name=table_name)
+            # print("Updating triggers")
+            # update_updated_at_trigger(cur, table_name)
             print("Upserting bulk")
             upsert_bulk(table_name=table_name, file_path=file_path)

@@ -26,7 +26,7 @@ def rename_sqp():
 
 def insert_sqp_brands():
     for file in sqp_downloads:
-        if 'Brand' in file and 'US' in file and '2023_05_27' in file:
+        if 'Brand' in file and 'US' in file and '2023_07' in file:
             try:
                 print(f"Inserting {file}")
                 filepath = os.path.join('SQP Downloads', file)

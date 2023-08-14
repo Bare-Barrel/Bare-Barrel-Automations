@@ -19,10 +19,11 @@ with postgresql.setup_cursor() as cur:
     last_update_date = cur.fetchone()['max']
 
 orders = 0
-for page in load_all_orders(LastUpdatedAfter=(datetime.utcnow() - timedelta(days=290)).isoformat()):    # datetime.utcnow() - timedelta(days=290)).isoformat()
+for page in load_all_orders(LastUpdatedAfter=last_update_date.isoformat()):    # datetime.utcnow() - timedelta(days=290)).isoformat()
     data = page.payload.get('Orders')
     orders += len(data)
     postgresql.upsert_bulk('orders.amazon', data, file_extension='json_normalize')
+    print(orders)
     # if orders > 0:
     #     break
 
