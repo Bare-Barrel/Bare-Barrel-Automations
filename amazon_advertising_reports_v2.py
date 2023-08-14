@@ -78,10 +78,9 @@ def request_report(ad_product, report_type, report_date, marketplace='US'):
         'SPONSORED_BRANDS': sb_Reports,
         'SPONSORED_DISPLAY': sd_Reports
     }
-    Reports = reports[ad_product]
+    Reports = reports[ad_product](account=marketplace, marketplace=Marketplaces[marketplace])
 
-    response = Reports(marketplace=Marketplaces[marketplace]).post_report(recordType=report_type,
-                                                                                body=json.dumps(body))
+    response = Reports.post_report(recordType=report_type, body=json.dumps(body))
     payload = response.payload
     return payload
 
@@ -114,12 +113,12 @@ def download_report(report_id, ad_product, marketplace='US', directory='', repor
         'SPONSORED_BRANDS': sb_Reports,
         'SPONSORED_DISPLAY': sd_Reports
     }
-    Reports = reports[ad_product]
+    Reports = reports[ad_product](account=marketplace, marketplace=Marketplaces[marketplace])
 
     print(f"Downloading Report {report_name}")
 
     for i in range(0, 20):
-        response = Reports(marketplace=Marketplaces[marketplace]).get_report(reportId=report_id)
+        response = Reports.get_report(reportId=report_id)
         status = response.payload['status']
 
         print(f"\tReport status: {status}")
@@ -129,13 +128,13 @@ def download_report(report_id, ad_product, marketplace='US', directory='', repor
             print(location)
             # Returns a pd dataframe
             if not download:
-                result = Reports().download_report(url=location, format='data')
+                result = Reports.download_report(url=location, format='data')
                 data = result.payload
                 df = pd.DataFrame(data)
                 return df
 
             # Downloads the report to directory
-            result = Reports().download_report(url=location, format='url')
+            result = Reports.download_report(url=location, format='url')
             url = result.payload
             download_response = requests.get(url)
 
@@ -158,7 +157,7 @@ def download_report(report_id, ad_product, marketplace='US', directory='', repor
 
 
 
-def request_download_reports(ad_product, report_type, marketplace, start_date, end_date, directory):
+def request_download_reports(ad_product, report_type, marketplace, start_date, end_date, root_directory):
     """
     Streamlines the process of downloading reports.
 
@@ -167,11 +166,12 @@ def request_download_reports(ad_product, report_type, marketplace, start_date, e
         report_type (str): ['campaigns', 'adGrouops', 'keywords' ...]
         marketplace (str): ['US', 'CA', 'UK', 'MX']
         start_date, end_date (str | dt.date)
+        root_directory (str | os.path): It will automatically create subfolders from the root directory.
 
     Returns:
         file_paths (list): list of paths saved to.
     """
-    directory = os.path.join(directory, ad_product, report_type, marketplace)
+    directory = os.path.join(root_directory, ad_product, report_type, marketplace)
     if isinstance(start_date, str):
         start_date = dt.datetime.strptime(start_date, '%Y-%m-%d').date()
         end_date = dt.datetime.strptime(end_date, '%Y-%m-%d').date()
@@ -285,24 +285,21 @@ def create_table(directory):
 if __name__ == '__main__':
     marketplaces = ['CA']
     ad_products = ['SPONSORED_BRANDS', 'SPONSORED_DISPLAY']
-    start_date, end_date = '2023-07-01', '2023-08-10'
-    directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
-    for marketplace in marketplaces:
-        for ad_product in ad_products:
-            for report_type in metrics[ad_product]:
-                file_paths = request_download_reports(ad_product, report_type, marketplace, start_date, end_date, directory)
+    start_date, end_date = '2023-06-15', '2023-08-10'
+    gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
 
-    # #             create_table()
-    # gzipped_directory = 'PPC Data/RAW Gzipped JSON Reports'
-    # for ad_product in ad_products:
-    #     for report_type in metrics[ad_product]:
-    #         for marketplace in marketplaces:
-    #             directory = os.path.join(gzipped_directory, ad_product, report_type, marketplace)
-    #             # regrexing table name
-    #             match = re.search(r'(SPONSORED_\w*)/(.+)/(\w+)', directory)
-    #             ad_product, report_type = match[1], match[2]
-    #             table_name = f"{ad_product.lower()}.{report_type}"
-    #             create_table(directory)
-    # # marketplace = 'US'
-    # # directory = os.path.join(gzipped_directory, 'SPONSORED_BRANDS', 'ads', 'US')
-    # # create_table(directory)
+    for ad_product in ad_products:
+        for report_type in metrics[ad_product]:
+            for marketplace in marketplaces:
+                directory = os.path.join(gzipped_directory, ad_product, report_type, marketplace)
+                # regrexing table name
+                match = re.search(r'(SPONSORED_\w*)/(.+)/(\w+)', directory)
+                ad_product, report_type = match[1], match[2]
+                table_name = f"{ad_product.lower()}.{report_type}"
+                request_download_reports(ad_product, report_type, marketplace, start_date, end_date, gzipped_directory)
+                # create_table(directory)
+
+
+    # marketplace = 'US'
+    # directory = os.path.join(gzipped_directory, 'SPONSORED_BRANDS', 'ads', 'US')
+    # create_table(directory)

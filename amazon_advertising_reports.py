@@ -96,8 +96,8 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
             "format": "GZIP_JSON"
         }
     }
-    print(body)
-    response = Reports(marketplace=Marketplaces[marketplace]).post_report(body=body)
+    
+    response = Reports(account=marketplace, marketplace=Marketplaces[marketplace]).post_report(body=body)
     payload = response.payload
     return payload
 
@@ -119,23 +119,47 @@ def download_report(report_id, directory, report_name, marketplace='US'):
     """
     while True:
         print(f"Downloading {report_name}")
-        response = Reports(marketplace=Marketplaces[marketplace]).get_report(reportId=report_id)
+        response = Reports(accounts=marketplace, marketplace=Marketplaces[marketplace]).get_report(reportId=report_id)
         status, url = response.payload['status'], response.payload['url']
         print(f"\tReport status: {status}")
+
         if status == 'COMPLETED':
             # Download the report
             response = requests.get(url)
+
             if response.status_code == 200:
                 file_path = os.path.join(directory, report_name + '.json.gz')
+
                 with open(file_path, 'wb') as file:
                     file.write(response.content)
+
                 print("File downloaded successfully.")
+
                 return file_path
+
             else:
                 print("Failed to download file.")
                 print("\tRedownloading...")
+
         time.sleep(30)
 
+
+def request_download_reports(ad_product, report_type_id, group_by, start_date, end_date, time_unit='DAILY', marketplace='US'):
+    """Streamlines the process of downloading reports."""
+    response = request_report(ad_product, report_type_id, group_by, start_date, end_date, time_unit, marketplace)
+
+    report_id, report_name = response['reportId'], response['name']
+
+    file_path = download_report(report_id, directory, report_name, marketplace)
+
+    return file_path
+
+
+def update_data():
+    """
+    Download reports & upserts to database
+    """
+    
 
 if __name__ == '__main__':
     import postgresql
