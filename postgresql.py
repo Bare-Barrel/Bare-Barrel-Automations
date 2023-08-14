@@ -268,13 +268,12 @@ def update_updated_at_trigger(cur, table_names=[]):
                     EXECUTE FUNCTION update_updated_at();""")
 
 
-def upsert_bulk(table_name, file_path, file_extension='auto', temp_path='temp.csv') -> None:
+def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
     """
     Fast way to upsert multiple entries at once
 
     table_name (str):
     file_path (str|os.path): path to csv / excel / json
-    temp_path (str|os.path): save location for the temp csv file
     """
     with setup_cursor(autocommit=False, cursor_factory=psycopg2.extras.NamedTupleCursor) as (conn, cur):
         # Extracts table's schema (column names & data type)
