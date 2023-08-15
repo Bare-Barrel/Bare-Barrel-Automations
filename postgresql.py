@@ -154,16 +154,26 @@ def sql_standardize(name, remove_parenthesis=True, remove_file_extension=True):
     
 
 
-def create_table(cur, file_path=None, data=None, file_extension='auto', table_name='filename', created_at=True, updated_at=True, keys=None):
-    """Reads an excel, csv or json file, then normalizes table columns with generic data types
-    IMPORTANT: Manually edit data types via excel"""
-    # Read file
-    pd_read_file = {'csv': pd.read_csv, 'xls': pd.read_excel, 'xlsx': pd.read_excel, 
-                        'json': pd.read_json, 'json_normalize': partial(pd.json_normalize, sep='_')}
-    if file_extension == 'auto' and file_path:
-        file_extension = file_path.split('.')[1] # ignores .gz
-    if file_path:
-        data = pd_read_file[file_extension](file_path)
+def create_table(cur, file_path, file_extension='auto', table_name='filename', created_at=True, updated_at=True, keys=None):
+    """
+    Reads an excel, csv or json file, then normalizes table columns with generic data types
+    IMPORTANT: Need to specify file_extension file_extension for io.StringIO files.
+    """
+    # Reads file
+    pd_read_file = {
+        'csv': pd.read_csv, 'xls': pd.read_excel, 'xlsx': pd.read_excel, 
+        'json': pd.read_json, 'json_normalize': partial(pd.json_normalize, sep='_'),
+        'pandas': pd.DataFrame
+    }
+
+    if file_extension == 'auto':
+        if '.' in file_path:
+            file_extension = file_path.split('.')[1]
+
+        elif isinstance(file_path, pd.DataFrame):
+            file_extension == 'pandas'
+
+    data = pd_read_file[file_extension](file_path)
 
     if data.empty:
         print("The Dataframe is empty.\n\tCancelling table creation. . .")
@@ -273,8 +283,9 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
     Fast way to upsert multiple entries at once
 
     table_name (str):
-    file_path (str|os.path): path to csv / excel / json
+    file_path (str|os.path|pd.DataFrame): path to csv / excel / json / pd.DataFrame
     """
+    print(f"Upserting {table_name}")
     with setup_cursor(autocommit=False, cursor_factory=psycopg2.extras.NamedTupleCursor) as (conn, cur):
         # Extracts table's schema (column names & data type)
         cur.execute(f"""SELECT column_name, data_type FROM information_schema.columns
@@ -324,11 +335,23 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
         )
         
         # Reads file
-        pd_read_file = {'csv': pd.read_csv, 'xls': pd.read_excel, 'xlsx': pd.read_excel, 
-                        'json': pd.read_json, 'json_normalize': partial(pd.json_normalize, sep='_')}
+        pd_read_file = {
+            'csv': pd.read_csv, 'xls': pd.read_excel, 'xlsx': pd.read_excel, 
+            'json': pd.read_json, 'json_normalize': partial(pd.json_normalize, sep='_'),
+            'pandas': pd.DataFrame
+        }
+    
         if file_extension == 'auto':
-            file_extension = file_path.split('.')[1]
+            if '.' in file_path:
+                file_extension = file_path.split('.')[1]
+
+            elif isinstance(file_path, pd.DataFrame):
+                file_extension == 'pandas'
+
         data = pd_read_file[file_extension](file_path)
+
+        if isinstance(file_path, pd.DataFrame):
+            data = file_path
         # standardize column names
         data.columns = [sql_standardize(column) for column in data.columns]
         print(data.columns)
@@ -366,20 +389,14 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
         # removes nulls=""
         csv_buffer.seek(0)
         lines = csv_buffer.readlines()
-        new_lines = [line.replace(',"",', ',,') for line in lines]
+        new_lines = [line.replace(',""', ',') for line in lines]
         csv_buffer.close()
-    
-        # Create a new in-memory CSV buffer
-        new_csv_buffer = io.StringIO()
-        new_csv_buffer.writelines(new_lines)
-        new_csv_buffer.seek(0)
+        csv_buffer = io.StringIO()
+        csv_buffer.writelines(new_lines)
+        csv_buffer.seek(0)
 
         # Copy stream data to the created temporary table in DB
-        cur.copy_expert(f"COPY {temp_table_name} FROM STDIN WITH (FORMAT CSV, DELIMITER ',', QUOTE '\"')", new_csv_buffer)
-        # with open(temp_path, 'rb') as file:
-        #     next(file)
-        #     # cur.copy_from(file, temp_table_name, null='', sep=',')
-        #     cur.copy_expert(f"COPY {temp_table_name} FROM STDIN WITH (FORMAT CSV, DELIMITER ',', QUOTE '\"')", file)
+        cur.copy_expert(f"COPY {temp_table_name} FROM STDIN WITH (FORMAT CSV, DELIMITER ',', QUOTE '\"')", csv_buffer)
 
         # Execute a query to get the primary key constraint name
         cur.execute("""SELECT constraint_name
@@ -403,6 +420,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
 
         # Drops temporary table on commit
         conn.commit()
+        print("\tUpsert Success\n")
 
 
 def create_metadata(cur):

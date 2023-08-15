@@ -7,7 +7,42 @@ import gzip
 import time
 from ad_api.api.reports import Reports
 from ad_api.base import Marketplaces
+import postgresql
+import re
+import os
+import ast
 
+
+table_names = {
+        "SPONSORED_PRODUCTS": {
+            "spCampaigns": {
+                "['campaign']": "campaign",
+                "['adGroup']":  "adgroup", #(useless?)
+                # "['campaignPlacement']": "placement", # USELESS no pkey (campaignId/adgroupId)
+                "['campaign', 'adGroup']": "campaign_adgroup",
+                "['campaign', 'campaignPlacement']": "campaign_placement",
+                # "['adGroup', 'campaignPlacement']": "adgroup_placement", # can't add adgroup additional metrics (==campaign_placement)
+                # "['campaign', 'adGroup', 'campaignPlacement']": "campaign_adgroup_placement", # cannot add adgroup additional metrics (==campaign_placement)
+            },
+            "spTargeting": {
+                "['targeting']": "targeting"
+            },
+            "spSearchTerm": {
+                "['searchTerm']": "search_term"
+            },
+            "spAdvertisedProduct": {
+                "['advertiser']": "advertised_product"
+            },
+            "spPurchasedProduct": {
+                "['asin']": "purchased_product"
+            },
+            },
+        "SPONSORED_BRANDS": {
+            "sbPurchasedProduct": {
+                "['purchasedAsin']": "purchased_product"
+            }
+        }
+}
 
 # Sponsored ads (version 3) group by metrics
 campaign_base_metrics = 'impressions, clicks, cost, purchases1d, purchases7d, purchases14d, purchases30d, purchasesSameSku1d, purchasesSameSku7d, purchasesSameSku14d, purchasesSameSku30d, unitsSoldClicks1d, unitsSoldClicks7d, unitsSoldClicks14d, unitsSoldClicks30d, sales1d, sales7d, sales14d, sales30d, attributedSalesSameSku1d, attributedSalesSameSku7d, attributedSalesSameSku14d, attributedSalesSameSku30d, unitsSoldSameSku1d, unitsSoldSameSku7d, unitsSoldSameSku14d, unitsSoldSameSku30d, kindleEditionNormalizedPagesRead14d, kindleEditionNormalizedPagesRoyalties14d, date, startDate, endDate, campaignBiddingStrategy, costPerClick, clickThroughRate, spend'
@@ -25,21 +60,21 @@ purchasedAsin_base_metrics = 'campaignId, adGroupId, date, startDate, endDate, c
 metrics = {
     # Sponsored Products (version 3)
     'SPONSORED_PRODUCTS': {
-        'campaign': f'{campaign_addtl_metrics}, {campaign_base_metrics}',
-        'adGroup': f'{adGroup_addtl_metrics}, {campaign_base_metrics}',
-        'campaign, adGroup': f'{campaign_addtl_metrics}, {adGroup_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '),
-        'campaignPlacement': f'{campaignPlacement_addtl_metrics}, {campaign_base_metrics}',     # useless? No campaignIds/adGroupIds
-        'campaign, campaignPlacement': f'{campaign_addtl_metrics}, {campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '),
-        'adGroup, campaignPlacement': f'{campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '), # can't add adGroup addt'l metrics == campaignPlacement
-        'campaign, adGroup, campaignPlacement': f'{campaign_addtl_metrics}, {campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '), # Can't add adGrouop add'tl metrics; == campaign, campaignPlacement
-        'targeting': f'{targeting_base_metrics}, {targeting_addtl_metrics}',
-        'searchTerm': searchTerm_base_metrics,
-        'advertiser': advertiser_base_metrics,
-        'asin': asin_base_metrics
+        "['campaign']": f'{campaign_addtl_metrics}, {campaign_base_metrics}',
+        "['adGroup']": f'{adGroup_addtl_metrics}, {campaign_base_metrics}',
+        "['campaign', 'adGroup']": f'{campaign_addtl_metrics}, {adGroup_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '),
+        "['campaignPlacement']": f'{campaignPlacement_addtl_metrics}, {campaign_base_metrics}',     # useless? No campaignIds/adGroupIds
+        "['campaign', 'campaignPlacement']": f'{campaign_addtl_metrics}, {campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '),
+        "['adGroup', 'campaignPlacement']": f'{campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '), # can't add adGroup addt'l metrics == campaignPlacement
+        "['campaign', 'adGroup', 'campaignPlacement']": f'{campaign_addtl_metrics}, {campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '), # Can't add adGrouop add'tl metrics; == campaign, campaignPlacement
+        "['targeting']": f'{targeting_base_metrics}, {targeting_addtl_metrics}',
+        "['searchTerm']": searchTerm_base_metrics,
+        "['advertiser']": advertiser_base_metrics,
+        "['asin']": asin_base_metrics
     },
     # Sponsored Brands Video (version 3)
     'SPONSORED_BRANDS': {
-        'purchasedAsin': purchasedAsin_base_metrics
+        "['purchasedAsin']": purchasedAsin_base_metrics
     }
 }
 
@@ -78,12 +113,12 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
         columns = metrics[ad_product][group_by].replace(' date,', '')
 
     body = {
-        "name": f"{ad_product} ({marketplace}) {report_type_id} {str(group_by.split(', '))} {start_date} - {end_date}",
-        "startDate": start_date,
-        "endDate": end_date,
+        "name": f"{ad_product} ({marketplace}) {report_type_id} {group_by} {start_date} - {end_date}",
+        "startDate": str(start_date),
+        "endDate": str(end_date),
         "configuration":{
             "adProduct": ad_product,
-            "groupBy": group_by.split(', '),    # converts to list
+            "groupBy": ast.literal_eval(group_by),    # converts to list
             "columns": columns.split(', '),
             # "filters": [
             #     {
@@ -96,13 +131,14 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
             "format": "GZIP_JSON"
         }
     }
+    print(f"Requesting {body['name']}")
     
     response = Reports(account=marketplace, marketplace=Marketplaces[marketplace]).post_report(body=body)
     payload = response.payload
     return payload
 
 
-def download_report(report_id, directory, report_name, marketplace='US'):
+def download_report(report_id, root_directory, report_name):
     """
     Once you have made a successful POST call, report generation can take up to three hours.
     You can check the report generation status by using the reportId returned in the initial 
@@ -113,13 +149,25 @@ def download_report(report_id, directory, report_name, marketplace='US'):
 
     Args:
         report_id (str): id of the report to be downloaded after posting a request report
+        root_directory (str | os.path): save directory
+        report_name (str)
 
     Returns:
         file_path (str)
     """
+    # regrexing save path
+    match = re.search(r'(SPONSORED_\w+)\s\((\w*)\)\s(\w+)\s(\[.+\])', report_name)
+    ad_product, marketplace, report_type_id, group_by = match[1], match[2], match[3], match[4]
+    table_name = table_names[ad_product][report_type_id][group_by]
+    directory = os.path.join(root_directory, ad_product, table_name, marketplace)
+
+    if not os.path.exists(directory) and directory:
+        print(f"Creating new directory: {directory}")
+        os.makedirs(directory)
+
     while True:
         print(f"Downloading {report_name}")
-        response = Reports(accounts=marketplace, marketplace=Marketplaces[marketplace]).get_report(reportId=report_id)
+        response = Reports(account=marketplace, marketplace=Marketplaces[marketplace]).get_report(reportId=report_id)
         status, url = response.payload['status'], response.payload['url']
         print(f"\tReport status: {status}")
 
@@ -144,7 +192,7 @@ def download_report(report_id, directory, report_name, marketplace='US'):
         time.sleep(30)
 
 
-def request_download_reports(ad_product, report_type_id, group_by, start_date, end_date, time_unit='DAILY', marketplace='US'):
+def request_download_reports(ad_product, report_type_id, group_by, start_date, end_date, directory, time_unit='DAILY', marketplace='US'):
     """Streamlines the process of downloading reports."""
     response = request_report(ad_product, report_type_id, group_by, start_date, end_date, time_unit, marketplace)
 
@@ -155,73 +203,108 @@ def request_download_reports(ad_product, report_type_id, group_by, start_date, e
     return file_path
 
 
-def update_data():
+def combine_data(directory=None, file_paths=[], file_extension='.json.gz'):
     """
-    Download reports & upserts to database
+    Combines files in a directory and/or in file_paths.
+    Inserts `marketplace` and `date` to the returned dataframe.
     """
+    # gets all similar file types in a directory
+    if directory:
+        for dirpath, dirnames, filenames in os.walk(directory):
+            filenames = [filename for filename in filenames if file_extension in filename]
+
+        for filename in filenames:
+            file_paths.append(os.path.join(dirpath, filename))
     
+    # combines data
+    combined_data = pd.DataFrame()
+
+    for file_path in file_paths:
+        df = pd.read_json(file_path)
+
+        # manually adds marketplace and date
+        match = re.search(r'\((\w*)\).+(20\d\d-\d\d-\d\d)', file_path)
+        df['marketplace'], df['date'] = match[1], match[2]
+
+        combined_data = pd.concat([df, combined_data], ignore_index=True)
+
+    return combined_data
+
+
+def update_data(start_date, end_date):
+    """
+    Download all reports & upserts to database.
+    It can only update up to 31 days at a time.
+    """
+    report_ids = {}
+
+    # requests reports
+    for marketplace in ['US', 'CA']:
+
+        for ad_product in table_names:
+
+            for report_type_id in table_names[ad_product]:
+
+                for group_by in table_names[ad_product][report_type_id]:
+
+                    response = request_report(ad_product, report_type_id, group_by, 
+                                                start_date, end_date, marketplace=marketplace)
+                    report_ids[response['name']] = response['reportId']
+                    time.sleep(1)
+    
+    # download reports
+    gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
+
+    for report_name in report_ids:        
+        file_path = download_report(report_ids[report_name], gzipped_directory, report_name)
+
+        # regrexing table name
+        match = re.search(r'(SPONSORED_\w+)\s\((\w*)\)\s(\w+)\s(\[.+\])', report_name)
+        ad_product, marketplace, report_type_id, group_by = match[1], match[2], match[3], match[4]
+        table_name = table_names[ad_product][report_type_id][group_by]
+        table_name = f"{ad_product.lower()}.{table_name}"
+        # manually ads marketplace
+        data = pd.read_json(file_path)
+        data['marketplace'] = marketplace
+
+        # upserts data
+        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+
+
+def create_table(directory, drop_table_if_exists=False):
+    """
+    Creates table by iterating all files in a directory & combining data.
+    Upserts data by default.
+    IMPORTANT!: Overlapping data may result to Primary Key error.
+    """
+
+    # regrexing table name
+    match = re.search(r'(SPONSORED_\w*)/(.+)', str(directory))
+    ad_product, report_type = match[1], match[2]
+    table_name = f"{ad_product.lower()}.{table_names[ad_product][report_type]}"
+
+    # combines data in the directory
+    combined_data = combine_data(directory, file_extension='.json.gz')
+
+    if combined_data.empty:
+        print(f"Table {table_name} is empty.\n\tCancelling table creation & upsertion. . .")
+        return
+
+    with postgresql.setup_cursor() as cur:        
+        if drop_table_if_exists:
+            cur.execute(f"DROP TABLE IF EXISTS {table_name}")
+
+        print(f"Creating table {table_name}")
+        postgresql.create_table(cur, file_path=combined_data, file_extension='pandas', table_name=table_name)
+
+        print("\tAdding triggers...")
+        postgresql.update_updated_at_trigger(cur, table_name)
+
+        print("\tUpserting data")
+        postgresql.upsert_bulk(table_name, combined_data, file_extension='pandas')
+
+
 
 if __name__ == '__main__':
-    import postgresql
-    import time
-    import re
-    reports = [
-        ['spCampaigns', 'campaign'], # sponsored_products_campaign
-        ['spCampaigns', 'adGroup'],  # sponsored_products_adgroup (useless?)
-        ['spCampaigns', 'campaignPlacement'], # sponored_products_placement (useless?)
-        ['spCampaigns', 'campaign, adGroup'], # sponsored_products_campaign_adgroup
-        ['spCampaigns', 'campaign, campaignPlacement'], # sponsored_products_campaign_placement
-        ['spCampaigns', 'adGroup, campaignPlacement'], # sponsored_products_adgroup_placement
-        ['spCampaigns', 'campaign, adGroup, campaignPlacement'], # sponsored_products_campaign_adgroup_placement (most useful?)
-        ['spTargeting', 'targeting'], # sponsored_products_targeting
-        ['spSearchTerm', 'searchTerm'], # sponsored_products_search_term_report
-        ['spAdvertisedProduct', 'advertiser'], # sponsored_products_advertised_product
-        ['spPurchasedProduct', 'asin']         # sponsored_products_purchased_product
-    ]
-    # request reports
-    report_ids = {}
-    for report in reports:
-        try:
-            report_type, group_by = report[0], report[1]
-            start_date, end_date = '2023-07-01', '2023-07-25'
-            response = request_report('SPONSORED_PRODUCTS', report_type, group_by, start_date, end_date, martketplace='US')
-            report_ids[response['name']] = response['reportId']
-        except Exception as e:
-            print(e)
-    time.sleep(60)
-
-    # download reports
-    for report in report_ids:
-        print(f"Downloading Report {report}")
-        filename = report
-        report_id = report_ids[report]
-        directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
-        file_path = download_report(report_id, directory, filename, 'US')
-
-        # insert to db
-        report_names = {
-            "['campaign']": "sponsored_products.campaign",
-            "['adGroup']":  "sponsored_products.adgroup", #(useless?)
-            # "['campaignPlacement']": "sponsored_products.placement", # USELESS no pkey (campaignId/adgroupId)
-            "['campaign', 'adGroup']": "sponsored_products.campaign_adgroup",
-            "['campaign', 'campaignPlacement']": "sponsored_products.campaign_placement",
-            "['adGroup', 'campaignPlacement']": "sponsored_products.adgroup_placement", # can't add adgroup additional metrics (==campaign_placement)
-            "['campaign', 'adGroup', 'campaignPlacement']": "sponsored_products.campaign_adgroup_placement", # cannot add adgroup additional metrics (==campaign_placement)
-            "['targeting']": "sponsored_products.targeting",
-            "['searchTerm']": "sponsored_products.search_term",
-            "['advertiser']": "sponsored_products.advertised_product",
-            "['asin']": "sponsored_products.purchased_product",
-            "['purchasedAsin']": "sponsored_brands.purchased_product"
-        }
-
-        with postgresql.setup_cursor() as cur:
-            # groupby = re.findall(r"(\[.*\])", filename)[0]
-            # table_name = report_names[str(groupby)]
-            # print("DROPPING TABLE")
-            # cur.execute(f"DROP TABLE IF EXISTS {table_name}")
-            # print(f"Creating table {table_name}")
-            # create_table(cur, file_path, file_extension='json', table_name=table_name)
-            # print("Updating triggers")
-            # update_updated_at_trigger(cur, table_name)
-            print("Upserting bulk")
-            upsert_bulk(table_name=table_name, file_path=file_path)
+    start_date, end_date = dt.date.today() - dt.timedelta(days=31), dt.date.today()
+    update_data(start_date, end_date)
