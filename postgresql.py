@@ -90,9 +90,21 @@ def sql_to_dataframe(query, vars=None):
 
 def camel_to_snake(name):
     """Transform camelCase names to snake_case names"""
-    name = re.sub(r'(?<!^)(?=[A-Z])', '_', name)
-    name = re.sub(r'(?<!^)(?<!\d)(?=\d+[a-z]*)', r'_',  name)
-    # name = name.strip('_').replace('__', '_')
+    def convert_to_lower(match):
+        # avoids further getting regrex
+        return match.group(0).lower()
+    # separates single capital letters with number in the middle (e.g. B2B)
+    name = re.sub(r'([A-Z][0-9][A-Z])', r'_\1_', name)
+    name = re.sub(r'([A-Z][0-9][A-Z])', convert_to_lower, name)
+    # name = re.sub(r'([A-Z][0-9][A-Z])', convert_to_lower, name)
+    # separates 2 or more consecutive capital letters (e.g. SKU, ASIN)
+    name = re.sub(r'([A-Z]{2,})', r'_\1_', name)
+    name = re.sub(r'_[A-Z]{2,}', convert_to_lower, name)
+    # separates capital from small (e.g. salesSameDay)
+    name = re.sub(r'(?<!^)(?=[A-Z]+)', '_', name)
+    # separates numbers preceded by small letters (e.g. unitsSold14d)
+    name = re.sub(r'(?<!^)(?<!\d)(?<!_[a-z])(?=\d+[a-z]*)', r'_',  name)
+    name = name.strip('_').replace('__', '_')
     return name.lower()
 
 
@@ -363,7 +375,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             # creates null non-existing columns
             if column_name not in data.columns:
                 data[column_name] = None
-                print(f"Missing column: {column_name}")
+                print(f"\tMissing column: {column_name}")
             # percentage str columns
             if data_type in (int, float) and data[column_name].dtype == 'object' and data[column_name].str.contains('%').any():
                 data[column_name] = data[column_name].str.replace('%', '').astype(float) / 100
@@ -376,7 +388,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
         ordered_columns = [col[0] for col in schema]
         missing_new_columns = [col for col in ordered_columns if col not in data.columns]
         if missing_new_columns:
-            print(f"New columns not in the database: {missing_new_columns}")
+            print(f"\nNew columns not in the database: {missing_new_columns}")
             raise Exception
         data = data[ordered_columns]
 
