@@ -1,45 +1,133 @@
-from datetime import datetime, timedelta
+import datetime as dt
 from sp_api.base import Marketplaces
 from sp_api.api import Orders
 from sp_api.util import throttle_retry, load_all_pages
+from sp_api.base.exceptions import SellingApiRequestThrottledException, SellingApiServerException
+from requests.exceptions import ReadTimeout
 import postgresql
+import time
+import pandas as pd
 
 
-table_name = 'orders.amazon'
+orders_table = 'orders.amazon_orders'
+order_items_table = 'orders.amazon_order_items'
 
 @throttle_retry()
 @load_all_pages()
-def load_all_orders(**kwargs):
+def load_all_orders(marketplace='US', **kwargs):
     """
     a generator function to return all pages, obtained by NextToken
     """
-    return Orders().get_orders(**kwargs)
+    return Orders(marketplace=Marketplaces[marketplace]).get_orders(**kwargs)
 
 
-def update_data():
+def get_orders_items(order_ids=[], marketplace='US'):
+    """
+    gets detail information of multiple orders and concatenate it to a dataframe
+    """
+    df = pd.DataFrame()
+
+    for order_id in list(order_ids):
+
+        while True:
+
+            try:
+                print(f"Getting Order ID: {order_id}")
+                order_items = Orders(marketplace=Marketplaces[marketplace]).get_order_items(order_id)
+                data = order_items.payload.get('OrderItems')
+                data = pd.json_normalize(data, sep='_')
+                data['amazon_order_id'] = order_id
+                data['marketplace'] = marketplace
+                df = pd.concat([df, data], ignore_index=True)
+                time.sleep(1/100)
+                break
+
+            except (SellingApiRequestThrottledException, SellingApiServerException, ReadTimeout) as error:
+                print(error)
+                time.sleep(5)
+
+    return df
+
+
+def update_data(marketplaces=['US', 'CA']):
     """
     Updates orders data based from the last updated date
     """
-    with postgresql.setup_cursor() as cur:
-        cur.execute(f"SELECT MAX(last_update_date)::TIMESTAMP FROM {table_name};")
-        last_update_date = cur.fetchone()['max']
+    for marketplace in list(marketplaces):
+        # gets latest orders
+        with postgresql.setup_cursor() as cur:
+            cur.execute(f"SELECT MAX(last_update_date)::TIMESTAMP FROM {orders_table} WHERE marketplace = '{marketplace}';")
+            last_update_date = cur.fetchone()['max']
+            if not last_update_date:
+                last_update_date = dt.date(2022,1,1)
 
-    orders = 0
-    for page in load_all_orders(LastUpdatedAfter=last_update_date.isoformat()):    # datetime.utcnow() - timedelta(days=290)).isoformat()
-        data = page.payload.get('Orders')
-        orders += len(data)
-        postgresql.upsert_bulk(table_name, data, file_extension='json_normalize')
-        print(orders)
+        order_ids = []
+        total_orders = 0
+
+        for page in load_all_orders(marketplace, LastUpdatedAfter=last_update_date.isoformat()):    # datetime.utcnow() - timedelta(days=290)).isoformat()
+            orders_payload = page.payload.get('Orders')
+            orders_data = pd.json_normalize(orders_payload, sep='_')
+            orders_data['marketplace'] = marketplace
+            order_ids += list(orders_data['AmazonOrderId'].unique())
+            total_orders += len(orders_payload)
+            print(f"Total orders: {total_orders}")
+        
+        # gets and upserts orders and order items data
+        order_items_data = get_orders_items(order_ids, marketplace)
+        postgresql.upsert_bulk(orders_table, orders_data, file_extension='pandas')
+        postgresql.upsert_bulk(order_items_table, order_items_data, file_extension='pandas')
 
 
-def create_table():
+def create_orders_table(drop_table_if_exists=False):
     # creates table initially
     with postgresql.setup_cursor() as cur:
-        cur.execute("DROP TABLE IF EXISTS orders.amazon;")
-        postgresql.create_table(cur, data, table_name=table_name, file_extension='json_normalize', keys='PRIMARY KEY (amazon_order_id)')
-        postgresql.update_updated_at_trigger(cur, table_name)
-        postgresql.upsert_bulk(table_name, data, file_extension='json_normalize')
+        if drop_table_if_exists:
+            cur.execute(f"DROP TABLE IF EXISTS {orders_table};")
+
+        postgresql.create_table(cur, data, table_name=orders_table, file_extension='json_normalize', keys='PRIMARY KEY (amazon_order_id)')
+        postgresql.update_updated_at_trigger(cur, orders_table)
+        postgresql.upsert_bulk(orders_table, data, file_extension='json_normalize')
+
+
+def create_order_items_table(drop_table_if_exists=False):
+    with postgresql.setup_cursor() as cur:
+        # retrieves first 50 orders for table creation
+        cur.execute(f"SELECT amazon_order_id FROM {orders_table} LIMIT 50;")
+        order_ids = [order['amazon_order_id'] for order in cur.fetchall()]
+        data = get_orders_items(order_ids)
+
+        if drop_table_if_exists:
+            cur.execute(f"DROP TABLE IF EXISTS {order_items_table};")
+
+        postgresql.create_table(cur, data, table_name=order_items_table, file_extension='pandas', keys=f'''PRIMARY KEY (order_item_id),
+                                                                                                            CONSTRAINT {order_items_table.split('.')[1]}_fk 
+                                                                                                            FOREIGN KEY (amazon_order_id) 
+                                                                                                            REFERENCES {orders_table} (amazon_order_id)''')
+        postgresql.update_updated_at_trigger(cur, order_items_table)
+        postgresql.upsert_bulk(order_items_table, data, file_extension='pandas')
+
+
+def update_missing_order_items(marketplace):
+    while True:
+        with postgresql.setup_cursor() as cur:
+            # retrieves first 50 orders for table creation
+            cur.execute(f"""SELECT amazon_order_id FROM {orders_table}
+                            WHERE amazon_order_id NOT IN (SELECT amazon_order_id FROM {order_items_table})
+                            AND marketplace = '{marketplace}'
+                            ORDER BY purchase_date DESC LIMIT 100;""")
+
+            order_ids = [order['amazon_order_id'] for order in cur.fetchall()]
+
+        data = get_orders_items(order_ids)
+
+        if data.empty:
+            print(f"No Missing Amazon Order IDs in orders.amazon_order_items ({marketplace})")
+            return
+        
+        postgresql.upsert_bulk(order_items_table, data, file_extension='pandas')
 
 
 if __name__ == '__main__':
     update_data()
+    # create_order_items_table(drop_table_if_exists=False)
+    # update_missing_order_items('CA')

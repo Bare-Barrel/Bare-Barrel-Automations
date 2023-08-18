@@ -96,8 +96,6 @@ def request_report(ad_product, report_type, report_date, marketplace='US'):
         report_type, segment = report_type.split(' - ')
         body['segment'] = segment
 
-    print(body)
-
     reports = {
         'SPONSORED_BRANDS': sb_Reports,
         'SPONSORED_DISPLAY': sd_Reports
@@ -226,7 +224,8 @@ def request_download_reports(ad_product, report_type, marketplace, start_date, e
 def combine_data(directory=None, file_paths=[], file_extension='.json.gz'):
     """
     Combines files in a directory and/or in file_paths.
-    Inserts `marketplace` and `date` to the returned dataframe.
+    Inserts `marketplace` and `date`.
+    Returns pandas dataframe.
     """
     # gets all similar file types in a directory
     if directory:
@@ -251,28 +250,32 @@ def combine_data(directory=None, file_paths=[], file_extension='.json.gz'):
     return combined_data
 
 
-def update_data(ad_product, report_type, marketplace, start_date, end_date):
+def update_data(ad_product, report_type, start_date, end_date, marketplaces=['US', 'CA']):
     """
     Adds upsert data step to request_download_reports by
     combining the downloaded files
     """
     gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
 
-    # request & download reports
-    file_paths = request_download_reports(ad_product, report_type, marketplace, start_date, end_date, gzipped_directory)
+    for marketplace in list(marketplaces):
+        # request & download reports
+        file_paths = request_download_reports(ad_product, report_type, marketplace, start_date, end_date, gzipped_directory)
 
-    # combine reports
-    combined_data = combine_data(file_paths=file_paths)
+        # combine reports
+        combined_data = combine_data(file_paths=file_paths)
+    
+        # upserts to db
+        table_name = f"{ad_product.lower()}.{table_names[ad_product][report_type]}"
+        postgresql.upsert_bulk(table_name, combined_data, file_extension='pandas')
 
-    # create an in-memory CSV
-    csv_buffer = io.StringIO()
-    combined_data.to_csv(csv_buffer, index=False, quoting=csv.QUOTE_NONNUMERIC)
-    csv_buffer.seek(0)
 
-    # upserts to db
-    table_name = f"{ad_product.lower()}.{table_names[ad_product][report_type]}"
-    postgresql.upsert_bulk(table_name, csv_buffer, file_extension='csv')
+def update_all_data(start_date, end_date, ad_products = ['SPONSORED_BRANDS', 'SPONSORED_DISPLAY'], marketplaces=['US', 'CA']):
+    gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
 
+    for ad_product in list(ad_products):
+
+        for report_type in metrics[ad_product]:
+            update_data(ad_product, report_type, start_date, end_date, marketplaces)
 
 
 def create_table(directory, drop_table_if_exists=False):
@@ -309,22 +312,5 @@ def create_table(directory, drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    marketplaces = ['US', 'CA']
-    ad_products = ['SPONSORED_DISPLAY']
-    start_date, end_date = '2023-06-16', '2023-06-20'
-    gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
-
-    for ad_product in ad_products:
-        for report_type in metrics[ad_product]:
-            for marketplace in marketplaces:
-                directory = os.path.join(gzipped_directory, ad_product, report_type)
-                print(directory)
-                # regrexing table name
-                table_name = f"{ad_product.lower()}.{report_type}"
-                # request_download_reports(ad_product, report_type, marketplace, start_date, end_date, gzipped_directory)
-                # create_table(gzipped_directory, drop_table_if_exists=False)
-                update_data(ad_product, report_type, marketplace, dt.date.today() - dt.timedelta(days=7), dt.date.today())
-
-    # marketplace = 'US'
-    # directory = os.path.join(gzipped_directory, 'SPONSORED_BRANDS', 'ads', 'US')
-    # create_table(directory)
+    start_date, end_date = dt.date.today() - dt.timedelta(days=20), dt.date.today()
+    update_all_data(start_date, end_date)

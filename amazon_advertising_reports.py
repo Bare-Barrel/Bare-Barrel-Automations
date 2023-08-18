@@ -231,7 +231,7 @@ def combine_data(directory=None, file_paths=[], file_extension='.json.gz'):
     return combined_data
 
 
-def update_data(start_date, end_date):
+def update_data(start_date, end_date, marketplaces=['US','CA']):
     """
     Download all reports & upserts to database.
     It can only update up to 31 days at a time.
@@ -239,14 +239,13 @@ def update_data(start_date, end_date):
     report_ids = {}
 
     # requests reports
-    for marketplace in ['US', 'CA']:
+    for ad_product in table_names:
 
-        for ad_product in table_names:
+        for report_type_id in table_names[ad_product]:
 
-            for report_type_id in table_names[ad_product]:
+            for group_by in table_names[ad_product][report_type_id]:
 
-                for group_by in table_names[ad_product][report_type_id]:
-
+                for marketplace in list(marketplaces):
                     response = request_report(ad_product, report_type_id, group_by, 
                                                 start_date, end_date, marketplace=marketplace)
                     report_ids[response['name']] = response['reportId']

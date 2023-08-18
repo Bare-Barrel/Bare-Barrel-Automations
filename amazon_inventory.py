@@ -11,7 +11,12 @@ import pytz
 
 table_name = 'inventory.fba'
 
-def update_data(marketplace='US'):
+def get_data(marketplace='US'):
+    """
+    Requests inventory data and returns a pandas dataframe.
+    It could could only request a snapshot of current inventory.
+    """
+    print(f"Getting inventory for {marketplace} marketplace.")
     inventory = Inventories(marketplace=Marketplaces[marketplace]).get_inventory_summary_marketplace(details=True)
     data = pd.json_normalize(inventory.payload['inventorySummaries'], sep='_')
 
@@ -21,21 +26,17 @@ def update_data(marketplace='US'):
     # manually adding marketplace and date
     data['marketplace'] = marketplace
     data['date'] = dt.datetime.now(pytz.timezone('UTC')).date()
-    postgresql.upsert_bulk(table_name, data, file_extension='pandas')
     return data
 
 
+def update_data(marketplaces=['US', 'CA']):
+    for marketplace in list(marketplaces):
+        data = get_data(marketplace)
+        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+
+
 def create_table(marketplace='US', drop_table_if_exists=False):
-    inventory = Inventories(accountmarketplace=Marketplaces[marketplace]).get_inventory_summary_marketplace(details=True)
-    data = pd.json_normalize(inventory.payload['inventorySummaries'], sep='_')
-
-    # removing top level of column name to meet postgresql col char limit (59)
-    data.columns = data.columns.str.replace(f'{"inventoryDetails"}_', '', regex=False)
-
-    # manually adding marketplace and date
-    data['marketplace'] = marketplace
-    data['date'] = dt.datetime.now(pytz.timezone('UTC')).date()
-
+    data = get_data(marketplace)
     with postgresql.setup_cursor() as cur:        
         if drop_table_if_exists:
             cur.execute(f"DROP TABLE IF EXISTS {table_name}")
@@ -55,5 +56,4 @@ def create_table(marketplace='US', drop_table_if_exists=False):
 
 if __name__ == '__main__':
     # create_table(marketplace='US', drop_table_if_exists=True)
-    data = update_data(marketplace='CA')    
-    print(data.head)
+    update_data()
