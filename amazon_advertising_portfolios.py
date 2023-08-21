@@ -1,0 +1,74 @@
+import logging
+from ad_api.api import Portfolios
+from ad_api.base import AdvertisingApiException
+from ad_api.base import Marketplaces
+import pandas as pd
+import postgresql
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s:%(levelname)s:%(message)s"
+)
+
+table_name = 'amazon_advertising_portfolios'
+
+
+def list_portfolios(marketplace='US', **kwargs):
+    logging.info(f"Getting portfolios {marketplace}")
+    try:
+        result = Portfolios(account=marketplace, marketplace=Marketplaces[marketplace]).list_portfolios_extended(
+            **kwargs
+        )
+
+        if result.payload:
+            payload = result.payload
+            for portfolio in payload:
+                logging.info(portfolio)
+        else:
+            logging.info(result)
+
+    except AdvertisingApiException as error:
+        logging.info(error)
+
+    return payload
+
+
+def update_data(marketplaces=['US', 'CA']):
+    combined_data = pd.DataFrame()
+
+    for marketplace in list(marketplaces):
+        response = list_portfolios(marketplace=marketplace)
+        data = pd.json_normalize(response)
+        data['marketplace'] = marketplace
+        combined_data = pd.concat([combined_data, data], ignore_index=True)
+
+    logging.info("Upserting data")
+    postgresql.upsert_bulk(table_name, combined_data, file_extension='pandas')
+
+
+def create_table(drop_table_if_exists=False):
+    response = list_portfolios('US')
+    data = pd.json_normalize(response)
+    data['marketplace'] = 'US'
+    print(data)
+
+    with postgresql.setup_cursor() as cur:        
+        if drop_table_if_exists:
+            cur.execute(f"DROP TABLE IF EXISTS {table_name}")
+
+        print(f"Creating table {table_name}")
+        postgresql.create_table(cur, file_path=data, file_extension='pandas', table_name=table_name,
+                                    keys='PRIMARY KEY (portfolio_id)')
+
+        print("\tAdding triggers...")
+        postgresql.update_updated_at_trigger(cur, table_name)
+
+        print("\tUpserting data")
+        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+
+
+if __name__ == '__main__':
+    # list_portfolios(marketplace)
+    # create_table(drop_table_if_exists=True)
+    update_data()

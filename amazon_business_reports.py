@@ -160,10 +160,12 @@ def create_table(asin_granularity, drop_table_if_exists=False):
 
 if __name__ == '__main__':
     # create_table('PARENT', drop_table_if_exists=False)
-    while True:
-        with postgresql.setup_cursor() as cur:
-            cur.execute("SELECT MAX(date) FROM business_reports.detail_page_sales_and_traffic_parent;")
-            end_date = cur.fetchone()['min'] - dt.timedelta(days=1)
-            start_date = end_date - dt.timedelta(days=10)
-            update_data(start_date=start_date, end_date=end_date)
-            time.sleep(5)
+    # while True:
+    # with postgresql.setup_cursor() as cur:
+        # # cur.execute("SELECT MAX(date) FROM business_reports.detail_page_sales_and_traffic_parent;")
+        # # end_date = cur.fetchone()['max'] - dt.timedelta(days=1)
+        # end_date = dt.date.today()
+        # start_date = end_date - dt.timedelta(days=10)
+        # update_data(start_date=start_date, end_date=end_date)
+        # time.sleep(5)
+    update_data()

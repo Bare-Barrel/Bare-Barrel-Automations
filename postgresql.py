@@ -297,6 +297,9 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
     table_name (str):
     file_path (str|os.path|pd.DataFrame): path to csv / excel / json / pd.DataFrame
     """
+    # adds public to schema if not present
+    if '.' not in table_name:
+        table_name = 'public.' + table_name
     print(f"Upserting {table_name}")
     with setup_cursor(autocommit=False, cursor_factory=psycopg2.extras.NamedTupleCursor) as (conn, cur):
         # Extracts table's schema (column names & data type)

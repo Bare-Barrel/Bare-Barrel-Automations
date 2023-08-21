@@ -107,27 +107,27 @@ def create_order_items_table(drop_table_if_exists=False):
         postgresql.upsert_bulk(order_items_table, data, file_extension='pandas')
 
 
-def update_missing_order_items(marketplace):
-    while True:
-        with postgresql.setup_cursor() as cur:
-            # retrieves first 50 orders for table creation
-            cur.execute(f"""SELECT amazon_order_id FROM {orders_table}
-                            WHERE amazon_order_id NOT IN (SELECT amazon_order_id FROM {order_items_table})
-                            AND marketplace = '{marketplace}'
-                            ORDER BY purchase_date DESC LIMIT 100;""")
+def update_missing_order_items(marketplaces=['US', 'CA']):
+    for marketplace in list(marketplaces):
+        while True:
+            with postgresql.setup_cursor() as cur:
+                # retrieves first 50 orders for table creation
+                cur.execute(f"""SELECT amazon_order_id FROM {orders_table}
+                                WHERE amazon_order_id NOT IN (SELECT amazon_order_id FROM {order_items_table})
+                                AND marketplace = '{marketplace}'
+                                ORDER BY purchase_date DESC LIMIT 100;""")
 
-            order_ids = [order['amazon_order_id'] for order in cur.fetchall()]
+                order_ids = [order['amazon_order_id'] for order in cur.fetchall()]
 
-        data = get_orders_items(order_ids)
+            data = get_orders_items(order_ids)
 
-        if data.empty:
-            print(f"No Missing Amazon Order IDs in orders.amazon_order_items ({marketplace})")
-            return
-        
-        postgresql.upsert_bulk(order_items_table, data, file_extension='pandas')
+            if data.empty:
+                print(f"No Missing Amazon Order IDs in orders.amazon_order_items ({marketplace})")
+                return
+            
+            postgresql.upsert_bulk(order_items_table, data, file_extension='pandas')
 
 
 if __name__ == '__main__':
     update_data()
-    # create_order_items_table(drop_table_if_exists=False)
-    # update_missing_order_items('CA')
+    update_missing_order_items()
