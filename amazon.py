@@ -131,4 +131,4 @@ if __name__ == '__main__':
     # insert_sqp_reports(filepath)
     filepath = os.path.join('PPC Data', 'Sponsored Products Search term report.xlsx')
     insert_ppc_reports(filepath, 'sponsored_product')
-    pass    
+    pass

@@ -55,5 +55,4 @@ def create_table(marketplace='US', drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    # create_table(marketplace='US', drop_table_if_exists=True)
     update_data()

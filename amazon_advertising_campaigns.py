@@ -82,4 +82,4 @@ def create_table(table_name, drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    update_data(['sponsored_brands.campaigns'])
+    update_data()
