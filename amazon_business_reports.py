@@ -36,7 +36,7 @@ def request_report(start_date, end_date, marketplace='US', asin_granularity='PAR
     start_date = dt.datetime.combine(start_date, dt.time.min)
     end_date = dt.datetime.combine(end_date, dt.time.max)
 
-    print(f"Requesting download Sales & Traffic Report ({marketplace}) {asin_granularity} {str(start_date)} - {str(end_date)}")
+    print(f"Requesting Sales & Traffic Report ({marketplace}) {asin_granularity} {str(start_date)} - {str(end_date)}")
 
     response = ReportsV2(marketplace=Marketplaces[marketplace]).create_report(
                             reportType = ReportType.GET_SALES_AND_TRAFFIC_REPORT,
@@ -52,6 +52,60 @@ def request_report(start_date, end_date, marketplace='US', asin_granularity='PAR
     report_id = response.payload['reportId']
 
     return report_id
+
+
+def get_report(report_id):
+    """
+    Checks and waits for the report status to be downloaded.
+
+    Returns document_id (str)
+    """
+    result = ReportsV2().get_report(report_id)
+    payload = result.payload
+    status = payload['processingStatus']
+    print(f"Report Processing Status: {status}")
+
+    if payload['processingStatus'] == 'DONE':
+        document_id = result.payload['reportDocumentId']
+        if document_id:
+            return document_id
+
+    time.sleep(15)
+    return get_report(report_id)
+
+
+def download_report(document_id):
+    """
+    Download and decompresses zipped report to memory.
+
+    Returns data (json)
+    """
+    try:
+        response = ReportsV2().get_report_document(document_id)
+        url = response.payload['url']
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            print("\tFile downloaded successfully.")
+            compressed_data = response.content
+
+            # Decompresses data
+            decompressed_data = gzip.decompress(compressed_data).decode('utf-8')
+
+            # Parse salesAndTrafficByAsin
+            data = json.loads(decompressed_data)['salesAndTrafficByAsin'] # list of dicts
+
+            return data
+
+        time.sleep(1)
+
+    except Exception as error:
+        print(f"Error {error}")
+        time.sleep(30)
+
+        # Retries
+        return download_report(document_id)
+
 
 
 def download_combine_reports(start_date, end_date, marketplace, asin_granularity):
@@ -79,64 +133,36 @@ def download_combine_reports(start_date, end_date, marketplace, asin_granularity
             report_id = request_report(current_date, current_date, marketplace, asin_granularity)
             report_ids[current_date] = report_id
             current_date += dt.timedelta(days=1)
-            time.sleep(10)
+            time.sleep(5)
 
         except Exception as error:
             print(f"Error: {error}")
             time.sleep(60)
 
     # Downloads & combines daily reports
-    data = pd.DataFrame()
+    combined_data = pd.DataFrame()
     for date in report_ids:
-        # Waits until report ready to be download
-        while True:
-            result = ReportsV2().get_report(report_id)
-            payload = result.payload
-            status = payload['processingStatus']
-            print(f"Report Processing Status: {status}")
+        report_id = report_ids[date]
+        document_id = get_report(report_id)
+        data = download_report(document_id)
 
-            if payload['processingStatus'] == 'DONE':
-                document_id = result.payload['reportDocumentId']
-                break
+        # Combines data
+        df = pd.json_normalize(data, sep='_')
+        df['date'] = date
+        df['marketplace'] = marketplace
+        combined_data = pd.concat([df, combined_data], ignore_index=True)
 
-            time.sleep(15)
-
-        # Downloads reports
-        while True:
-            try:
-                response = ReportsV2().get_report_document(document_id)
-                url = response.payload['url']
-                response = requests.get(url)
-                time.sleep(1)
-                break
-            except Exception as error:
-                print(f"Error {error}")
-                time.sleep(30)
-
-        if response.status_code == 200:
-            print("\tFile downloaded successfully.")
-            compressed_data = response.content
-
-            # Decompresses data
-            decompressed_data = gzip.decompress(compressed_data).decode('utf-8')
-
-            # Parse salesAndTrafficByAsin
-            sales_and_traffic = json.loads(decompressed_data)['salesAndTrafficByAsin'] # list of dicts
-
-            # Combines data
-            df = pd.json_normalize(sales_and_traffic, sep='_')
-            df['date'] = date
-            df['marketplace'] = marketplace
-            data = pd.concat([df, data], ignore_index=True)
+    return combined_data
 
 
-    return data
+def update_data(asin_granularity='PARENT', marketplaces=['US', 'CA'], start_date=(dt.datetime.utcnow() - dt.timedelta(days=7)), end_date=(dt.datetime.utcnow() - dt.timedelta(days=1))):
+    if isinstance(marketplaces, str):
+        marketplaces = [marketplaces]
 
-
-def update_data(asin_granularity='PARENT', marketplace='US', start_date=(dt.datetime.utcnow() - dt.timedelta(days=10)), end_date=(dt.datetime.utcnow() - dt.timedelta(days=1))):
-    data = download_combine_reports(start_date, end_date, marketplace, asin_granularity=asin_granularity)
-    table_name = base_table_name + f"_{asin_granularity.lower()}"
-    postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+    for marketplace in marketplaces:
+        data = download_combine_reports(start_date, end_date, marketplace, asin_granularity=asin_granularity)
+        table_name = base_table_name + f"_{asin_granularity.lower()}"
+        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 
 def create_table(asin_granularity, drop_table_if_exists=False):
@@ -159,13 +185,4 @@ def create_table(asin_granularity, drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    # create_table('PARENT', drop_table_if_exists=False)
-    # while True:
-    # with postgresql.setup_cursor() as cur:
-        # # cur.execute("SELECT MAX(date) FROM business_reports.detail_page_sales_and_traffic_parent;")
-        # # end_date = cur.fetchone()['max'] - dt.timedelta(days=1)
-        # end_date = dt.date.today()
-        # start_date = end_date - dt.timedelta(days=10)
-        # update_data(start_date=start_date, end_date=end_date)
-        # time.sleep(5)
     update_data()
