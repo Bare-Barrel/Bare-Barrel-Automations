@@ -9,10 +9,14 @@ import re
 import io
 import csv
 from functools import partial
+import logging
+import logger_setup
+
+logger_setup.setup_logging(__file__)
+logger = logging.getLogger(__name__)
 
 with open("config.json") as f:
     config = json.load(f)
-
 
 class setup_cursor():
     """
@@ -46,7 +50,7 @@ class setup_cursor():
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type:
-            print("An error occurred:", str(exc_val))
+            logger.info("An error occurred:", str(exc_val))
         self.close()
 
     def connect(self, dbname=None):
@@ -188,7 +192,7 @@ def create_table(cur, file_path, file_extension='auto', table_name='filename', c
     data = pd_read_file[file_extension](file_path)
 
     if data.empty:
-        print("The Dataframe is empty.\n\tCancelling table creation. . .")
+        logger.info("The Dataframe is empty.\n\tCancelling table creation. . .")
         return
 
     # Create the SQL CREATE TABLE statement
@@ -260,7 +264,7 @@ def create_table(cur, file_path, file_extension='auto', table_name='filename', c
 
     # Complete the CREATE TABLE statement
     create_table_sql += ";"
-    print(create_table_sql)
+    logger.info(create_table_sql)
     # Execute the CREATE TABLE statement
     cur.execute(create_table_sql)
 
@@ -300,7 +304,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
     # adds public to schema if not present
     if '.' not in table_name:
         table_name = 'public.' + table_name
-    print(f"Upserting {table_name}")
+    logger.info(f"Upserting {table_name}")
     with setup_cursor(autocommit=False, cursor_factory=psycopg2.extras.NamedTupleCursor) as (conn, cur):
         # Extracts table's schema (column names & data type)
         cur.execute(f"""SELECT column_name, data_type FROM information_schema.columns
@@ -369,16 +373,16 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             data = file_path
         # standardize column names
         data.columns = [sql_standardize(column) for column in data.columns]
-        print(data.columns)
+        logger.info(data.columns)
     
         # Casts appropriate data type
         for column in converted_schema:
             column_name, data_type = column[0], column[1]
-            print(column_name, data_type)
+            logger.info(f"{column_name}, {data_type}")
             # creates null non-existing columns
             if column_name not in data.columns:
                 data[column_name] = None
-                print(f"\tMissing column: {column_name}")
+                logger.info(f"\tMissing column: {column_name}")
             # percentage str columns
             if data_type in (int, float) and data[column_name].dtype == 'object' and data[column_name].str.contains('%').any():
                 data[column_name] = data[column_name].str.replace('%', '').astype(float) / 100
@@ -391,7 +395,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
         ordered_columns = [col[0] for col in schema]
         missing_new_columns = [col for col in ordered_columns if col not in data.columns]
         if missing_new_columns:
-            print(f"\nNew columns not in the database: {missing_new_columns}")
+            logger.info(f"\nNew columns not in the database: {missing_new_columns}")
             raise Exception
         data = data[ordered_columns]
 
@@ -435,7 +439,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
 
         # Drops temporary table on commit
         conn.commit()
-        print("\tUpsert Success\n")
+        logger.info("\tUpsert Success\n")
 
 
 def create_metadata(cur):
@@ -768,7 +772,7 @@ def copy_h10_keyword_tracker(cur, path):
             cur.copy_from(file, 'h10_keyword_tracker', sep='\t', null='0', 
                                         columns=(col.replace(' ','_').lower() for col in data.columns))
     except Exception as e:
-        print(e)
+        logger.error(e)
 
 
 def create_sponsored_tables(cur, directory):
@@ -778,11 +782,11 @@ def create_sponsored_tables(cur, directory):
         for file in files:
             file_path = os.path.join(root, file)
             table_name = sql_standardize(file)
-            print(f"Creating table {table_name}")
+            logger.info(f"Creating table {table_name}")
             create_table(cur, file_path)
-            print("Updating triggers")
+            logger.info("Updating triggers")
             update_updated_at_trigger(cur, table_name)
-            print("Upserting bulk")
+            logger.info("Upserting bulk")
             upsert_bulk(table_name, file_path)
 
 
@@ -804,24 +808,24 @@ if __name__ == "__main__":
     directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
     for root, path, files in os.walk(directory):
         for file in files:
-            print(file)
+            logger.info(file)
             file_path = os.path.join(root, file)
             groupby = re.findall(r"(\[.*\])", file)[0] if ".json" in file_path else ""
-            print(groupby)
+            logger.info(groupby)
             if '(US)' in file and '.gz' in file and groupby in reports and '2023-04' in file:
                 table_name = reports[groupby]
-                # print(f"Dropping Table {table_name}")
+                # logger.info(f"Dropping Table {table_name}")
                 # try:
                 #     cur.execute(f'DROP TABLE IF EXISTS {table_name};')
                 # except:
-                #     print(f"TABLE DOES NOT EXISTS {table_name}")
+                #     logger.info(f"TABLE DOES NOT EXISTS {table_name}")
                 try:
-                    # print(f"Creating table {table_name}")
+                    # logger.info(f"Creating table {table_name}")
                     # create_table(cur, file_path, file_extension='json', table_name=table_name)
-                    # print("Updating triggers")
+                    # logger.info("Updating triggers")
                     # update_updated_at_trigger(cur, table_name)
-                    print(f"Upserting bulk {file_path}")
+                    logger.info(f"Upserting bulk {file_path}")
                     upsert_bulk(table_name, file_path)
                 except Exception as e:
-                    print(f"Error. . .\n{e}")
+                    logger.warning(f"Error. . .\n{e}")
     pass

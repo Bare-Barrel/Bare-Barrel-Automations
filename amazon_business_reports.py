@@ -8,7 +8,11 @@ import postgresql
 import requests
 import gzip
 import json
+import logging
+import logger_setup
 
+logger_setup.setup_logging(__file__)
+logger = logging.getLogger(__name__)
 
 base_table_name = 'business_reports.detail_page_sales_and_traffic'
 
@@ -36,7 +40,7 @@ def request_report(start_date, end_date, marketplace='US', asin_granularity='PAR
     start_date = dt.datetime.combine(start_date, dt.time.min)
     end_date = dt.datetime.combine(end_date, dt.time.max)
 
-    print(f"Requesting Sales & Traffic Report ({marketplace}) {asin_granularity} {str(start_date)} - {str(end_date)}")
+    logger.info(f"Requesting Sales & Traffic Report ({marketplace}) {asin_granularity} {str(start_date)} - {str(end_date)}")
 
     response = ReportsV2(marketplace=Marketplaces[marketplace]).create_report(
                             reportType = ReportType.GET_SALES_AND_TRAFFIC_REPORT,
@@ -63,7 +67,7 @@ def get_report(report_id):
     result = ReportsV2().get_report(report_id)
     payload = result.payload
     status = payload['processingStatus']
-    print(f"Report Processing Status: {status}")
+    logger.info(f"Report Processing Status: {status}")
 
     if payload['processingStatus'] == 'DONE':
         document_id = result.payload['reportDocumentId']
@@ -86,7 +90,7 @@ def download_report(document_id):
         response = requests.get(url)
 
         if response.status_code == 200:
-            print("\tFile downloaded successfully.")
+            logger.info("\tFile downloaded successfully.")
             compressed_data = response.content
 
             # Decompresses data
@@ -100,7 +104,7 @@ def download_report(document_id):
         time.sleep(1)
 
     except Exception as error:
-        print(f"Error {error}")
+        logger.warning(f"Error {error}")
         time.sleep(30)
 
         # Retries
@@ -136,7 +140,7 @@ def download_combine_reports(start_date, end_date, marketplace, asin_granularity
             time.sleep(5)
 
         except Exception as error:
-            print(f"Error: {error}")
+            logger.warning(f"Error: {error}")
             time.sleep(60)
 
     # Downloads & combines daily reports

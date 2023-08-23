@@ -6,6 +6,11 @@ from postgresql import setup_cursor, sql_standardize
 import re
 import psycopg2
 import csv
+import logging
+import logger_setup
+
+logger_setup.setup_logging(__file__)
+logger = logging.getLogger(__name__)
 
 def get_amazon_products(country : str = 'US') -> list:
     """Retrieves active amazon products from product_amazon db
@@ -44,7 +49,7 @@ def insert_sqp_reports(csv_path : str) -> None:
     country = filename.split('_')[0]
     view = 'brand' if 'brand' in filename.lower() else 'asin'
     table_name = 'brand_analytics.search_query_performance_{}_view'.format(view)
-    print(f"\tINSERTING {metadata.columns} to {table_name}")
+    logger.info(f"\tINSERTING {metadata.columns} to {table_name}")
     # cleans & inserts metadata
     data['country'] = country
     for col in metadata.columns:
@@ -68,7 +73,7 @@ def insert_sqp_reports(csv_path : str) -> None:
                     ORDER BY ordinal_position;""", (table_name, ))
     column_names = [row['column_name'] for row in cur.fetchall()]
     data = data[column_names]
-    print(data.head(3))
+    logger.info(data.head(3))
     # removing & fixing `tab spaces` in search query
     data['search_query'] = data['search_query'].replace('    ', ' ', regex=True)
     data['search_query'] = data['search_query'].replace(r'\\', '(?)', regex=True)
@@ -88,12 +93,12 @@ def raw_insert_ppc_reports(sponsored_type):
     for path, currentDirectory, files in os.walk(RAW_folder):
         # Skipping 2019-2020
         if '2019' in path or '2020' in path or '2021' in path:
-            print(f'skipping {path}')
+            logger.info(f'skipping {path}')
             continue
         for file in files:
             if 'products' in file.lower():
                 filepath = os.path.join(path, file)
-                print(f'#Inserting {filepath}')
+                logger.info(f'#Inserting {filepath}')
                 insert_ppc_reports(filepath, 'sponsored_products')
 
 
@@ -120,11 +125,11 @@ def insert_ppc_reports(excel_path : str, sponsored_type : str):
     data['created'] = dt.datetime.now()
     temp_csv = os.path.join(os.getcwd(), 'ppc_data_temp.csv')
     data.to_csv(temp_csv, index=False)
-    print(f"Inserting into {table_name} \n{data.head(2)}") 
+    logger.info(f"Inserting into {table_name} \n{data.head(2)}") 
     try:
         cur.execute(f"""COPY {table_name} FROM '{temp_csv}' DELIMITER ',' CSV HEADER;""")
     except Exception as e:
-        print(e)
+        logger.error(e)
 
 if __name__ == '__main__':
     # filepath = os.path.join('SQP Downloads', 'CA_Search_Query_Performance_Brand_View_Simple_Week_2023_02_18.csv')

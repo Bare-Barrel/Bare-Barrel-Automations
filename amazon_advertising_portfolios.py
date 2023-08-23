@@ -4,7 +4,11 @@ from ad_api.base import AdvertisingApiException
 from ad_api.base import Marketplaces
 import pandas as pd
 import postgresql
+import logging
+import logger_setup
 
+logger_setup.setup_logging(__file__)
+logger = logging.getLogger(__name__)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,7 +33,7 @@ def list_portfolios(marketplace='US', **kwargs):
             logging.info(result)
 
     except AdvertisingApiException as error:
-        logging.info(error)
+        logging.error(error)
 
     return payload
 
@@ -51,20 +55,20 @@ def create_table(drop_table_if_exists=False):
     response = list_portfolios('US')
     data = pd.json_normalize(response)
     data['marketplace'] = 'US'
-    print(data)
+    logger.info(data)
 
     with postgresql.setup_cursor() as cur:        
         if drop_table_if_exists:
             cur.execute(f"DROP TABLE IF EXISTS {table_name}")
 
-        print(f"Creating table {table_name}")
+        logger.info(f"Creating table {table_name}")
         postgresql.create_table(cur, file_path=data, file_extension='pandas', table_name=table_name,
                                     keys='PRIMARY KEY (portfolio_id)')
 
-        print("\tAdding triggers...")
+        logger.info("\tAdding triggers...")
         postgresql.update_updated_at_trigger(cur, table_name)
 
-        print("\tUpserting data")
+        logger.info("\tUpserting data")
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 

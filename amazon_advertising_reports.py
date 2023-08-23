@@ -11,7 +11,11 @@ import postgresql
 import re
 import os
 import ast
+import logging
+import logger_setup
 
+logger_setup.setup_logging(__file__)
+logger = logging.getLogger(__name__)
 
 table_names = {
         "SPONSORED_PRODUCTS": {
@@ -131,7 +135,7 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
             "format": "GZIP_JSON"
         }
     }
-    print(f"Requesting {body['name']}")
+    logger.info(f"Requesting {body['name']}")
     
     response = Reports(account=marketplace, marketplace=Marketplaces[marketplace]).post_report(body=body)
     payload = response.payload
@@ -162,14 +166,14 @@ def download_report(report_id, root_directory, report_name):
     directory = os.path.join(root_directory, ad_product, table_name, marketplace)
 
     if not os.path.exists(directory) and directory:
-        print(f"Creating new directory: {directory}")
+        logger.info(f"Creating new directory: {directory}")
         os.makedirs(directory)
 
     while True:
-        print(f"Downloading {report_name}")
+        logger.info(f"Downloading {report_name}")
         response = Reports(account=marketplace, marketplace=Marketplaces[marketplace]).get_report(reportId=report_id)
         status, url = response.payload['status'], response.payload['url']
-        print(f"\tReport status: {status}")
+        logger.info(f"\tReport status: {status}")
 
         if status == 'COMPLETED':
             # Download the report
@@ -181,13 +185,13 @@ def download_report(report_id, root_directory, report_name):
                 with open(file_path, 'wb') as file:
                     file.write(response.content)
 
-                print("File downloaded successfully.")
+                logger.info("File downloaded successfully.")
 
                 return file_path
 
             else:
-                print("Failed to download file.")
-                print("\tRedownloading...")
+                logger.info("Failed to download file.")
+                logger.info("\tRedownloading...")
 
         time.sleep(30)
 
@@ -286,20 +290,20 @@ def create_table(directory, drop_table_if_exists=False):
     combined_data = combine_data(directory, file_extension='.json.gz')
 
     if combined_data.empty:
-        print(f"Table {table_name} is empty.\n\tCancelling table creation & upsertion. . .")
+        logger.info(f"Table {table_name} is empty.\n\tCancelling table creation & upsertion. . .")
         return
 
     with postgresql.setup_cursor() as cur:        
         if drop_table_if_exists:
             cur.execute(f"DROP TABLE IF EXISTS {table_name}")
 
-        print(f"Creating table {table_name}")
+        logger.info(f"Creating table {table_name}")
         postgresql.create_table(cur, file_path=combined_data, file_extension='pandas', table_name=table_name)
 
-        print("\tAdding triggers...")
+        logger.info("\tAdding triggers...")
         postgresql.update_updated_at_trigger(cur, table_name)
 
-        print("\tUpserting data")
+        logger.info("\tUpserting data")
         postgresql.upsert_bulk(table_name, combined_data, file_extension='pandas')
 
 

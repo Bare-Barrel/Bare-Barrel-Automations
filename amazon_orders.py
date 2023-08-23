@@ -7,7 +7,11 @@ from requests.exceptions import ReadTimeout
 import postgresql
 import time
 import pandas as pd
+import logging
+import logger_setup
 
+logger_setup.setup_logging(__file__)
+logger = logging.getLogger(__name__)
 
 orders_table = 'orders.amazon_orders'
 order_items_table = 'orders.amazon_order_items'
@@ -32,7 +36,7 @@ def get_orders_items(order_ids=[], marketplace='US'):
         while True:
 
             try:
-                print(f"Getting Order ID: {order_id}")
+                logger.info(f"Getting Order ID: {order_id}")
                 order_items = Orders(marketplace=Marketplaces[marketplace]).get_order_items(order_id)
                 data = order_items.payload.get('OrderItems')
                 data = pd.json_normalize(data, sep='_')
@@ -43,7 +47,7 @@ def get_orders_items(order_ids=[], marketplace='US'):
                 break
 
             except (SellingApiRequestThrottledException, SellingApiServerException, ReadTimeout) as error:
-                print(error)
+                logger.error(error)
                 time.sleep(5)
 
     return df
@@ -54,7 +58,8 @@ def update_data(marketplaces=['US', 'CA']):
     Updates orders data based from the last updated date
     """
     for marketplace in list(marketplaces):
-        print(f"Getting Orders from {marketplace}. . .")
+        logger.info(f"Getting Orders from {marketplace}. . .")
+
         # gets latest orders
         with postgresql.setup_cursor() as cur:
             cur.execute(f"SELECT MAX(last_update_date)::TIMESTAMP FROM {orders_table} WHERE marketplace = '{marketplace}';")
@@ -72,11 +77,11 @@ def update_data(marketplaces=['US', 'CA']):
                 data['marketplace'] = marketplace
                 orders_data = pd.concat([orders_data, data], ignore_index=True)
                 total_orders += len(orders_payload)
-                print(f"\t{total_orders} orders processed")
+                logger.info(f"\t{total_orders} orders processed")
                 time.sleep(10)
 
         if orders_data.empty:
-            print("No new updated orders")
+            logger.info("No new updated orders")
             continue
 
         # upserts orders data
@@ -130,7 +135,7 @@ def update_missing_order_items(marketplaces=['US', 'CA']):
                 order_ids = [order['amazon_order_id'] for order in cur.fetchall()]
 
             if not order_ids:
-                print(f"No Missing Amazon Order IDs in orders.amazon_order_items ({marketplace})")
+                logger.info(f"No Missing Amazon Order IDs in orders.amazon_order_items ({marketplace})")
                 break
 
             data = get_orders_items(order_ids)

@@ -4,13 +4,17 @@ import datetime as dt
 import os
 from postgresql import setup_cursor
 import psycopg2
+import logging
+import logger_setup
 
+logger_setup.setup_logging(__file__)
+logger = logging.getLogger(__name__)
 
 def insert_data(csv : str, **kwargs) -> None:
     """Cleans & insert downloaded cerebro csv file according to database structure
     **kwargs - additional columns"""
     metadata = "{} ({}) - {} - {} - {}".format(kwargs['platform'], kwargs['country'], kwargs['asin'], kwargs['category'], kwargs['date'])
-    print(f"\tINSERTING {metadata}")
+    logger.info(f"\tINSERTING {metadata}")
     cur = setup_cursor().connect('ppc')
     table_name = f"cerebro_{kwargs['platform']}"
     # removes competitors' organic ranking
@@ -19,7 +23,7 @@ def insert_data(csv : str, **kwargs) -> None:
     # adds columns
     for col in kwargs.keys():
         data[col] = kwargs[col]
-    print(data.head(5))
+    logger.info(data.head(5))
     data['created'] = dt.datetime.now()
     data.replace('-', '', inplace=True)
     data.dropna(subset='Competitor Performance Score', inplace=True) # removes 0 competitor performance score
@@ -38,10 +42,10 @@ def insert_data(csv : str, **kwargs) -> None:
     temp_csv = os.path.join(os.getcwd(), file)
     data.to_csv(temp_csv, index=False)
     try:
-        print(f"\tCopying {file} to {table_name}")
+        logger.info(f"\tCopying {file} to {table_name}")
         cur.execute(f"""COPY {table_name} FROM '{temp_csv}' DELIMITER ',' CSV HEADER;""")
     except psycopg2.errors.UniqueViolation as error:
-        print(error)
+        logger.error(error)
     cur.close()
     return
 

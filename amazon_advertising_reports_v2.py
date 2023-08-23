@@ -12,7 +12,11 @@ import io
 import csv
 import requests
 import postgresql
+import logging
+import logger_setup
 
+logger_setup.setup_logging(__file__)
+logger = logging.getLogger(__name__)
 
 table_names = {
         'SPONSORED_BRANDS': {
@@ -77,7 +81,7 @@ def request_report(ad_product, report_type, report_date, marketplace='US'):
         response.payload
     """
     report_name = f"{ad_product} ({marketplace}) {report_type} {report_date}"
-    print(f"Requesting: {report_name}")
+    logger.info(f"Requesting: {report_name}")
 
     body = {
         "reportDate": str(report_date).replace('-', ''),
@@ -127,7 +131,7 @@ def download_report(report_id, ad_product, marketplace='US', directory='', repor
     """
     download = True if directory else False
     if not os.path.exists(directory) and directory:
-        print(f"Creating new directory: {directory}")
+        logger.info(f"Creating new directory: {directory}")
         os.makedirs(directory)
         download = True
 
@@ -137,17 +141,17 @@ def download_report(report_id, ad_product, marketplace='US', directory='', repor
     }
     Reports = reports[ad_product](account=marketplace, marketplace=Marketplaces[marketplace])
 
-    print(f"Downloading Report {report_name}")
+    logger.info(f"Downloading Report {report_name}")
 
     for i in range(0, 20):
         response = Reports.get_report(reportId=report_id)
         status = response.payload['status']
 
-        print(f"\tReport status: {status}")
+        logger.info(f"\tReport status: {status}")
     
         if status == 'SUCCESS':
             location = response.payload['location']
-            print(location)
+
             # Returns a pd dataframe
             if not download:
                 result = Reports.download_report(url=location, format='data')
@@ -166,12 +170,12 @@ def download_report(report_id, ad_product, marketplace='US', directory='', repor
                 with open(file_path, 'wb') as file:
                     file.write(download_response.content)
 
-                print("File downloaded successfully.")
+                logger.info("File downloaded successfully.")
                 return file_path
 
             else:
-                print("Failed to download file.")
-                print("\tRedownloading...")
+                logger.info("Failed to download file.")
+                logger.info("\tRedownloading...")
 
         time.sleep(30)
 
@@ -209,7 +213,7 @@ def request_download_reports(ad_product, report_type, marketplace, start_date, e
             report_ids[report_name] = response['reportId']
             current_date += dt.timedelta(days=1)
         except AdvertisingApiTooManyRequestsException as error:
-            print(error)
+            logger.error(error)
             time.sleep(5)
 
     file_paths = []
@@ -293,20 +297,20 @@ def create_table(directory, drop_table_if_exists=False):
     combined_data = combine_data(directory, file_extension='.json.gz')
 
     if combined_data.empty:
-        print(f"Table {table_name} is empty.\n\tCancelling table creation & upsertion. . .")
+        logger.info(f"Table {table_name} is empty.\n\tCancelling table creation & upsertion. . .")
         return
 
     with postgresql.setup_cursor() as cur:        
         if drop_table_if_exists:
             cur.execute(f"DROP TABLE IF EXISTS {table_name}")
 
-        print(f"Creating table {table_name}")
+        logger.info(f"Creating table {table_name}")
         postgresql.create_table(cur, file_path=combined_data, file_extension='pandas', table_name=table_name)
 
-        print("\tAdding triggers...")
+        logger.info("\tAdding triggers...")
         postgresql.update_updated_at_trigger(cur, table_name)
 
-        print("\tUpserting data")
+        logger.info("\tUpserting data")
         postgresql.upsert_bulk(table_name, combined_data, file_extension='pandas')
 
 

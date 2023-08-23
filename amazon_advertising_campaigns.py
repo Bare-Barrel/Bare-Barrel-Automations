@@ -5,7 +5,11 @@ from ad_api.base import Marketplaces
 from decorators import Utils
 import pandas as pd
 import postgresql
+import logging
+import logger_setup
 
+logger_setup.setup_logging(__file__)
+logger = logging.getLogger(__name__)
 
 table_names = {
     'sponsored_products.campaigns': sp_campaigns,
@@ -23,7 +27,7 @@ def list_campaigns(table_name, marketplace='US', **kwargs):
     Returns 
         response (ad_api.base.api_response.ApiResponse)
     """
-    print(f"Getting list of {table_name} ({marketplace})")
+    logger.info(f"Getting list of {table_name} ({marketplace})")
     Campaigns = table_names[table_name]
 
     return Campaigns(account=marketplace, marketplace=Marketplaces[marketplace]).list_campaigns(body=kwargs)
@@ -70,14 +74,14 @@ def create_table(table_name, drop_table_if_exists=False):
         if drop_table_if_exists:
             cur.execute(f"DROP TABLE IF EXISTS {table_name}")
 
-        print(f"Creating table {table_name}")
+        logger.info(f"Creating table {table_name}")
         postgresql.create_table(cur, file_path=data, file_extension='pandas', table_name=table_name,
                                     keys='PRIMARY KEY (campaign_id)')
 
-        print("\tAdding triggers...")
+        logger.info("\tAdding triggers...")
         postgresql.update_updated_at_trigger(cur, table_name)
 
-        print("\tUpserting data")
+        logger.info("\tUpserting data")
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 

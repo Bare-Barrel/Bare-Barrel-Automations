@@ -8,3 +8,4 @@ __pycache__
 *_venv
 *_env
 .DS_Store
+/logging/

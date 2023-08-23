@@ -12,12 +12,17 @@ import asyncio
 import os
 import shutil
 import postgresql
+import logging
+import logger_setup
+
+logger_setup.setup_logging(__file__)
+logger = logging.getLogger(__name__)
 
 with open('config.json') as f:
     config = json.load(f)
 
 async def scrape_cerebro(playwright: Playwright, marketplaces=['US', 'CA']) -> list:
-    print("Scraping Cerebro. . .")
+    logger.info("Scraping Cerebro. . .")
     # playwright = sync_playwright().start() # PLS COMMENT THIS! FOR TESTING PURPOSES ONLY!
     storage = 'storage_helium10.json'
     browser = await playwright.chromium.launch(headless=False, slow_mo=50)
@@ -45,7 +50,7 @@ async def scrape_cerebro(playwright: Playwright, marketplaces=['US', 'CA']) -> l
             # retrieves competitor asins
             competitors = competitors_list[competitors_list.Category == row.Category].iloc[:, 1:].values
             competitors = re.sub(r'\W+', ' ', str(competitors)).strip()
-            print(f"\tDownloading Cerebro {competitors}")
+            logger.info(f"\tDownloading Cerebro {competitors}")
             # deletes asins
             input_box = page.locator('input[placeholder="Enter up to 10 product ASINs"]')
             await input_box.click()
@@ -145,7 +150,7 @@ async def download_sqp(page=None, country='US', reporting_range='weekly', date_r
     sqp_url = {'brand': "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-brands-view&brand={}&reporting-range={}&{}={}&country-id={}",
                 'asin': "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-asin-view&asin={}&reporting-range={}&{}={}&country-id={}"}
 
-    print(f"@SearchQueryPerformance Querying {asin} ({country}) {date_report}")
+    logger.info(f"@SearchQueryPerformance Querying {asin} ({country}) {date_report}")
     await page.goto(sqp_url[view].format(config['amazon_brand_id'] if view == 'brand' else asin, 
                                             reporting_range, reporting_range_formats[reporting_range], date_report, country.lower()))  # refreshes page as soon as it changes marketplace
     # await page.click('[id*="katal-id-"]')  # *= starts with e.g. id=katal-id-0
@@ -162,22 +167,22 @@ async def download_sqp(page=None, country='US', reporting_range='weekly', date_r
     await asyncio.sleep(5)
 
     try: 
-        print("TRYING")
+        logger.info("TRYING")
         async with page.expect_popup() as page2_info:
             await page.locator("#downloadModalGenerateDownloadButton").get_by_role("button", name="Generate Download").click()
             await asyncio.sleep(5)
             # error, click once
             error_exists = await page.locator('#downloadModalGenerateDownloadButton').is_visible(timeout=300)
             if error_exists:
-                print("\t#ERROR: Try again")
+                logger.info("\t#ERROR: Try again")
                 await page.locator("#downloadModalGenerateDownloadButton").click()
                 await asyncio.sleep(5)
             # closes download manager page every popup            
             page2 = await page2_info.value 
             await page2.close()
-            print('\tDownload success!')
+            logger.info('\tDownload success!')
     except:
-        print("Failed to download")
+        logger.info("Failed to download")
         pass
     return
 
@@ -197,7 +202,7 @@ async def download_reports(page, n_view_rows=25, n_pages=1):
     await asyncio.sleep(10)
     # waits for progress to be completed
     while await page.is_visible('text=In Progress'):
-        print("Download is still In Progress. . .\n\tRefreshing the page")
+        logger.info("Download is still In Progress. . .\n\tRefreshing the page")
         await page.reload()
         await asyncio.sleep(15)
     # selects view N rows
@@ -206,7 +211,7 @@ async def download_reports(page, n_view_rows=25, n_pages=1):
         await page.click(f'text=View {n_view_rows} rows')
     # downloads each report
     download_buttons = await page.get_by_role("row").get_by_text("Download").all()
-    print(f"LENGTH OF DOWNLOAD BUTTONS: {len(download_buttons)}")
+    logger.info(f"LENGTH OF DOWNLOAD BUTTONS: {len(download_buttons)}")
     for download_button in download_buttons:
         try:
             await download_button.click()
@@ -225,12 +230,12 @@ async def download_reports(page, n_view_rows=25, n_pages=1):
                 asin = re.search(pattern, metadata.columns[0]).group(1) + '_'
                 filename = filename.split('.')[0] + f' [{asin}]' + filename.split('.')[1] # US_Search_Query_Performance_ASIN_View_Week_2022_12_31 [B0B2B9X6P4].csv
             # copies file to folder
-            print(f"Copying {filename} to SQP Downloads Folder")
+            logger.info(f"Copying {filename} to SQP Downloads Folder")
             saved_filepath = os.path.join(os.getcwd(), 'SQP Downloads', f'{filename}')
             shutil.copyfile(csv_path, saved_filepath)
             downloaded_filepaths.append(saved_filepath)
         except Exception as e:
-            print(e)
+            logger.error(e)
     return downloaded_filepaths
 
 
@@ -244,9 +249,9 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_rep
         view (str): select which viewing report to download.
     Return:"""
     # playwright = sync_playwright().start() # PLS COMMENT THIS! FOR TESTING PURPOSES ONLY!
-    print("Starting Search Query Performance Analytics. . .")
+    logger.info("Starting Search Query Performance Analytics. . .")
     page = await start_playwright_page(playwright=playwright, storage_state='storage_sellercentral_amazon.json', headless=False, default_timeout=60000)
-    print("@SearchQueryPerformance Logging in")
+    logger.info("@SearchQueryPerformance Logging in")
     await login_amazon(page)
 
 
@@ -263,13 +268,13 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_rep
                     query = """SELECT EXISTS(SELECT * FROM search_query_performance_asin_view WHERE asin = %s AND reporting_date = %s)"""
                     exists = postgresql.sql_to_dataframe('ppc', query, (asin, date_report))['exists'].item()
                     if exists:
-                        print("@SQP {} {} already exists \n\tSkipping...".format(asin, date_report))
+                        logger.info("@SQP {} {} already exists \n\tSkipping...".format(asin, date_report))
                         continue
                     await download_sqp(page, country, date_report=date_report, view=view, asin=asin)
                     downloads += 1
                     if downloads == asinView_maxDownloads:
                         # download reports via `Downloads Manager`
-                        print("@SearchQueryPerformance Downloading reports")
+                        logger.info("@SearchQueryPerformance Downloading reports")
                         downloaded_filepaths += await download_reports(page, n_view_rows=asinView_maxDownloads)
                         downloads = 0
 
@@ -278,7 +283,7 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_rep
                 await download_sqp(page, country, date_report=date_report, view=view)
 
     # download reports via `Downloads Manager`
-    print("@SearchQueryPerformance Downloading reports")
+    logger.info("@SearchQueryPerformance Downloading reports")
     downloaded_filepaths = await download_reports(page, n_view_rows=100)
 
     # inserts to amazon db
