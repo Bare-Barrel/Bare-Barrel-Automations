@@ -39,7 +39,7 @@ def get_orders_items(order_ids=[], marketplace='US'):
                 data['amazon_order_id'] = order_id
                 data['marketplace'] = marketplace
                 df = pd.concat([df, data], ignore_index=True)
-                time.sleep(1/100)
+                time.sleep(1)
                 break
 
             except (SellingApiRequestThrottledException, SellingApiServerException, ReadTimeout) as error:
@@ -54,6 +54,7 @@ def update_data(marketplaces=['US', 'CA']):
     Updates orders data based from the last updated date
     """
     for marketplace in list(marketplaces):
+        print(f"Getting Orders from {marketplace}. . .")
         # gets latest orders
         with postgresql.setup_cursor() as cur:
             cur.execute(f"SELECT MAX(last_update_date)::TIMESTAMP FROM {orders_table} WHERE marketplace = '{marketplace}';")
@@ -61,20 +62,29 @@ def update_data(marketplaces=['US', 'CA']):
             if not last_update_date:
                 last_update_date = dt.date(2022,1,1)
 
-        order_ids = []
+        orders_data = pd.DataFrame()
         total_orders = 0
 
         for page in load_all_orders(marketplace, LastUpdatedAfter=last_update_date.isoformat()):    # datetime.utcnow() - timedelta(days=290)).isoformat()
-            orders_payload = page.payload.get('Orders')
-            orders_data = pd.json_normalize(orders_payload, sep='_')
-            orders_data['marketplace'] = marketplace
-            order_ids += list(orders_data['AmazonOrderId'].unique())
-            total_orders += len(orders_payload)
-            print(f"Total orders: {total_orders}")
-        
-        # gets and upserts orders and order items data
-        order_items_data = get_orders_items(order_ids, marketplace)
+
+                orders_payload = page.payload.get('Orders')
+                data = pd.json_normalize(orders_payload, sep='_')
+                data['marketplace'] = marketplace
+                orders_data = pd.concat([orders_data, data], ignore_index=True)
+                total_orders += len(orders_payload)
+                print(f"\t{total_orders} orders processed")
+                time.sleep(10)
+
+        if orders_data.empty:
+            print("No new updated orders")
+            continue
+
+        # upserts orders data
         postgresql.upsert_bulk(orders_table, orders_data, file_extension='pandas')
+
+        # gets and upserts order items data
+        order_ids = list(orders_data['amazon_order_id'].unique())
+        order_items_data = get_orders_items(order_ids, marketplace)
         postgresql.upsert_bulk(order_items_table, order_items_data, file_extension='pandas')
 
 
@@ -119,11 +129,11 @@ def update_missing_order_items(marketplaces=['US', 'CA']):
 
                 order_ids = [order['amazon_order_id'] for order in cur.fetchall()]
 
-            data = get_orders_items(order_ids)
-
-            if data.empty:
+            if not order_ids:
                 print(f"No Missing Amazon Order IDs in orders.amazon_order_items ({marketplace})")
-                return
+                break
+
+            data = get_orders_items(order_ids)
             
             postgresql.upsert_bulk(order_items_table, data, file_extension='pandas')
 
