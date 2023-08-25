@@ -3,6 +3,7 @@ from ad_api.api.sb import CampaignsV4 as sb_campaigns
 from ad_api.api.sd import Campaigns as sd_campaigns
 from ad_api.base import Marketplaces
 from decorators import Utils
+from utility import to_list
 import pandas as pd
 import postgresql
 import logging
@@ -41,7 +42,7 @@ def get_data(table_name, marketplaces=['US', 'CA'], **kwargs):
     """
     data = pd.DataFrame()
 
-    for marketplace in list(marketplaces):
+    for marketplace in to_list(marketplaces):
 
         for page in list_campaigns(table_name, marketplace, **kwargs):
 
@@ -62,7 +63,7 @@ def get_data(table_name, marketplaces=['US', 'CA'], **kwargs):
 
 
 def update_data(table_names=table_names.keys(), marketplaces=['US', 'CA'], **kwargs):
-    for table_name in list(table_names):
+    for table_name in to_list(table_names):
         data = get_data(table_name, marketplaces, **kwargs)
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 

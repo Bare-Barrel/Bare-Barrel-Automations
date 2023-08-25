@@ -2,6 +2,7 @@ from ad_api.api.sb.reports import Reports as sb_Reports
 from ad_api.api.sd.reports import Reports as sd_Reports
 from ad_api.base import Marketplaces
 from ad_api.base.exceptions import AdvertisingApiTooManyRequestsException
+from utility import to_list
 import datetime as dt
 import pandas as pd
 import json
@@ -261,7 +262,7 @@ def update_data(ad_product, report_type, start_date, end_date, marketplaces=['US
     """
     gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
 
-    for marketplace in list(marketplaces):
+    for marketplace in to_list(marketplaces):
         # request & download reports
         file_paths = request_download_reports(ad_product, report_type, marketplace, start_date, end_date, gzipped_directory)
 
@@ -276,7 +277,7 @@ def update_data(ad_product, report_type, start_date, end_date, marketplaces=['US
 def update_all_data(start_date, end_date, ad_products = ['SPONSORED_BRANDS', 'SPONSORED_DISPLAY'], marketplaces=['US', 'CA']):
     gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
 
-    for ad_product in list(ad_products):
+    for ad_product in to_list(ad_products):
 
         for report_type in metrics[ad_product]:
             update_data(ad_product, report_type, start_date, end_date, marketplaces)

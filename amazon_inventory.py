@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from sp_api.base import Marketplaces
 from sp_api.api import Inventories
 from sp_api.util import throttle_retry, load_all_pages
+from utility import to_list
 import postgresql
 import pandas as pd
 import io
@@ -34,7 +35,7 @@ def get_data(marketplace='US'):
 
 
 def update_data(marketplaces=['US', 'CA']):
-    for marketplace in list(marketplaces):
+    for marketplace in to_list(marketplaces):
         data = get_data(marketplace)
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 

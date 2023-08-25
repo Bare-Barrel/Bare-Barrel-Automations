@@ -2,6 +2,7 @@ import logging
 from ad_api.api import Portfolios
 from ad_api.base import AdvertisingApiException
 from ad_api.base import Marketplaces
+from utility import to_list
 import pandas as pd
 import postgresql
 import logging
@@ -41,7 +42,7 @@ def list_portfolios(marketplace='US', **kwargs):
 def update_data(marketplaces=['US', 'CA']):
     combined_data = pd.DataFrame()
 
-    for marketplace in list(marketplaces):
+    for marketplace in to_list(marketplaces):
         response = list_portfolios(marketplace=marketplace)
         data = pd.json_normalize(response)
         data['marketplace'] = marketplace

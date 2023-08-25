@@ -4,6 +4,7 @@ from sp_api.api import Orders
 from sp_api.util import throttle_retry, load_all_pages
 from sp_api.base.exceptions import SellingApiRequestThrottledException, SellingApiServerException
 from requests.exceptions import ReadTimeout
+from utility import to_list
 import postgresql
 import time
 import pandas as pd
@@ -31,7 +32,7 @@ def get_orders_items(order_ids=[], marketplace='US'):
     """
     df = pd.DataFrame()
 
-    for order_id in list(order_ids):
+    for order_id in to_list(order_ids):
 
         while True:
 
@@ -57,7 +58,7 @@ def update_data(marketplaces=['US', 'CA'], **kwargs):
     """
     Updates orders data based from the last updated date
     """
-    for marketplace in list(marketplaces):
+    for marketplace in to_list(marketplaces):
         logger.info(f"Getting Orders from {marketplace}. . .")
 
         # gets latest orders
@@ -123,7 +124,7 @@ def create_order_items_table(drop_table_if_exists=False):
 
 
 def update_missing_order_items(marketplaces=['US', 'CA']):
-    for marketplace in list(marketplaces):
+    for marketplace in to_list(marketplaces):
         while True:
             with postgresql.setup_cursor() as cur:
                 # retrieves first 50 orders for table creation

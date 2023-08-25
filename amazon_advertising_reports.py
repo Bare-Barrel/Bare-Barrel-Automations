@@ -7,6 +7,7 @@ import gzip
 import time
 from ad_api.api.reports import Reports
 from ad_api.base import Marketplaces
+from utility import to_list
 import postgresql
 import re
 import os
@@ -249,7 +250,7 @@ def update_data(start_date, end_date, marketplaces=['US','CA']):
 
             for group_by in table_names[ad_product][report_type_id]:
 
-                for marketplace in list(marketplaces):
+                for marketplace in to_list(marketplaces):
                     response = request_report(ad_product, report_type_id, group_by, 
                                                 start_date, end_date, marketplace=marketplace)
                     report_ids[response['name']] = response['reportId']
