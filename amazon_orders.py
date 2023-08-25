@@ -53,7 +53,7 @@ def get_orders_items(order_ids=[], marketplace='US'):
     return df
 
 
-def update_data(marketplaces=['US', 'CA']):
+def update_data(marketplaces=['US', 'CA'], **kwargs):
     """
     Updates orders data based from the last updated date
     """
@@ -70,7 +70,7 @@ def update_data(marketplaces=['US', 'CA']):
         orders_data = pd.DataFrame()
         total_orders = 0
 
-        for page in load_all_orders(marketplace, LastUpdatedAfter=last_update_date.isoformat()):    # datetime.utcnow() - timedelta(days=290)).isoformat()
+        for page in load_all_orders(marketplace, LastUpdatedAfter=last_update_date.isoformat(), **kwargs):    # datetime.utcnow() - timedelta(days=290)).isoformat()
 
                 orders_payload = page.payload.get('Orders')
                 data = pd.json_normalize(orders_payload, sep='_')

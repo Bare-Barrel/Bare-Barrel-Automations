@@ -205,10 +205,14 @@ def create_table(cur, file_path, file_extension='auto', table_name='filename', c
     for column_name in data.columns:
         # Transforms date columns
         if 'date' in column_name.lower():
-            data[column_name] = pd.to_datetime(data[column_name], errors='ignore')
+            contains_list = data[column_name].apply(lambda x: isinstance(x, list)).any()
+            if not contains_list: # Lists causes error in pd.to_datetime
+                data[column_name] = pd.to_datetime(data[column_name], errors='ignore')
         else:
-        # Transforms objects to numeric, if possible
-            data[column_name] = pd.to_numeric(data[column_name], errors='ignore')
+        # Transforms objects to numeric, if 
+            contains_list = data[column_name].apply(lambda x: isinstance(x, list)).any()
+            if not contains_list: # Lists causes error in pd.to_numeric
+                data[column_name] = pd.to_numeric(data[column_name], errors='ignore')
 
         standardized_column_name = sql_standardize(column_name)
         data_type = str(data[column_name].dtype)
