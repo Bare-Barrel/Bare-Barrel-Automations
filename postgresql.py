@@ -246,6 +246,17 @@ def create_table(cur, file_path, file_extension='auto', table_name='filename', c
         elif not_null_col_values.transform(lambda x: x.apply(type).eq(dict)).all():
             data_type = 'jsonb'
 
+        # Array / list
+        elif not_null_col_values.transform(lambda x: x.apply(type).eq(list)).all():
+            # filters out empty lists
+            not_null_col_values = not_null_col_values[not_null_col_values.apply(lambda x: len(x) > 0)]
+            if type(not_null_col_values.values[0][0]) == str:
+                data_type = 'text[]'
+            elif type(not_null_col_values.values[0][0]) == int:
+                data_type = 'integer[]'
+            elif type(not_null_col_values.values[0][0]) == dict:
+                data_type = 'jsonb'
+            
         else:
             data_type = 'text'
     
@@ -309,7 +320,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
     if '.' not in table_name:
         table_name = 'public.' + table_name
     logger.info(f"Upserting {table_name}")
-    with setup_cursor(autocommit=False, cursor_factory=psycopg2.extras.NamedTupleCursor) as (conn, cur):
+    with setup_cursor(autocommit=False) as (conn, cur):
         # Extracts table's schema (column names & data type)
         cur.execute(f"""SELECT column_name, data_type FROM information_schema.columns
                         WHERE table_schema || '.' || table_name = '{table_name}'
@@ -317,7 +328,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
         schema = cur.fetchall()
 
         # SQL standardize and pop out `created_at` & `updated_at`
-        schema = [(sql_standardize(item[0]), item[-1]) for item in schema if item[0] not in ('created_at', 'updated_at')]
+        schema = [(sql_standardize(item['column_name']), item['data_type']) for item in schema if item['column_name'] not in ('created_at', 'updated_at')]
 
         # Mapping PostgreSQL data types to Python/pandas data types
         type_mapping = {
@@ -332,14 +343,16 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             'timestamp': 'datetime64[ns]',  # You can convert it to a proper Python datetime type if needed
             'timestamp without time zone': 'datetime64[ns]',
             'timestamp with time zone': 'datetime64[ns, ',  # Time zone will be filled out later
-            'character varying': str
+            'character varying': str,
+            'ARRAY': 'object',
+            'jsonb': 'object'
         }
 
         # Convert schema data types to Python data types
         converted_schema = []
         for column_name, data_type in schema:
             python_data_type = type_mapping.get(data_type, str) # str if not exists
-            converted_schema.append((column_name, python_data_type))
+            converted_schema.append((column_name, python_data_type, data_type))
 
         # Create string with set of columns to be updated
         update_set = ", ".join([f"{column[0]}=EXCLUDED.{column[0]}" for column in converted_schema])
@@ -381,8 +394,8 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
     
         # Casts appropriate data type
         for column in converted_schema:
-            column_name, data_type = column[0], column[1]
-            logger.info(f"{column_name}, {data_type}")
+            column_name, data_type, postgresql_data_type = column[0], column[1], column[2]
+            logger.info(f"{column_name}, {postgresql_data_type}: {data_type}")
             # creates null non-existing columns
             if column_name not in data.columns:
                 data[column_name] = None
@@ -393,6 +406,13 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             # inserts time zone
             if data_type == 'datetime64[ns, ':
                 data_type += str(pd.to_datetime(data[column_name]).dt.tz) + ']'
+            # adjust array representation
+            if postgresql_data_type == 'ARRAY':
+                data[column_name] = data[column_name].fillna('')
+                data[column_name] = data[column_name].apply(lambda x: '{' + ', '.join(x) + '}')
+            # dumps jsonb
+            if postgresql_data_type == 'jsonb':
+                data[column_name] = data[column_name].apply(json.dumps)
             data[column_name] = data[column_name].astype(data_type)
 
         # orders columns by their ordinal position
@@ -402,6 +422,9 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             logger.info(f"\nNew columns not in the database: {missing_new_columns}")
             raise Exception
         data = data[ordered_columns]
+
+        # Replace null values with proper format
+        data = data.replace(['None', 'nan', 'NaN', np.nan], ['', '', '', ''])
 
         # Create an in-memory CSV
         csv_buffer = io.StringIO()
@@ -426,7 +449,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
                         FROM information_schema.table_constraints
                         WHERE table_schema || '.' || table_name = %s
                         AND constraint_type = 'PRIMARY KEY';""", (table_name,))
-        primary_key_constraint_name = cur.fetchone()
+        primary_key_constraint_name = cur.fetchone()['constraint_name']
 
         # Inserts copied data from the temporary table to the final table
         # updating existing values at each new conflict
@@ -435,7 +458,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             INSERT INTO {table_name}({', '.join(data.columns)})
             SELECT * FROM {temp_table_name}
             {
-                f"ON CONFLICT ON CONSTRAINT {primary_key_constraint_name[0]} DO UPDATE SET {update_set};" 
+                f"ON CONFLICT ON CONSTRAINT {primary_key_constraint_name} DO UPDATE SET {update_set};" 
                 if primary_key_constraint_name else ";"
             }
             """
@@ -793,43 +816,3 @@ def create_sponsored_tables(cur, directory):
             logger.info("Upserting bulk")
             upsert_bulk(table_name, file_path)
 
-
-if __name__ == "__main__":
-    cur = setup_cursor('ppc').connect()
-    reports = {
-        "['campaign']": "sponsored_products_campaign_report",
-        "['adGroup']":  "sponsored_products_adgroup_report", #(useless?)
-        "['campaignPlacement']": "sponsored_products_placement_report", #(useless?)
-        "['campaign', 'adGroup']": "sponsored_products_campaign_adgroup_report",
-        "['campaign', 'campaignPlacement']": "sponsored_products_campaign_placement_report",
-        "['adGroup', 'campaignPlacement']": "sponsored_products_adgroup_placement_report",
-        "['campaign', 'adGroup', 'campaignPlacement']": "sponsored_products_campaign_adgroup_placement_report", #(most useful?)
-        "['targeting']": "sponsored_products_targeting_report",
-        "['searchTerm']": "sponsored_products_search_term_report",
-        "['advertiser']": "sponsored_products_advertised_product_report",
-        "['asin']": "sponsored_products_purchased_product_report"
-    }
-    directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
-    for root, path, files in os.walk(directory):
-        for file in files:
-            logger.info(file)
-            file_path = os.path.join(root, file)
-            groupby = re.findall(r"(\[.*\])", file)[0] if ".json" in file_path else ""
-            logger.info(groupby)
-            if '(US)' in file and '.gz' in file and groupby in reports and '2023-04' in file:
-                table_name = reports[groupby]
-                # logger.info(f"Dropping Table {table_name}")
-                # try:
-                #     cur.execute(f'DROP TABLE IF EXISTS {table_name};')
-                # except:
-                #     logger.info(f"TABLE DOES NOT EXISTS {table_name}")
-                try:
-                    # logger.info(f"Creating table {table_name}")
-                    # create_table(cur, file_path, file_extension='json', table_name=table_name)
-                    # logger.info("Updating triggers")
-                    # update_updated_at_trigger(cur, table_name)
-                    logger.info(f"Upserting bulk {file_path}")
-                    upsert_bulk(table_name, file_path)
-                except Exception as e:
-                    logger.warning(f"Error. . .\n{e}")
-    pass

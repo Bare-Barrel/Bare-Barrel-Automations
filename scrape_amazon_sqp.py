@@ -1,17 +1,17 @@
 from playwright.sync_api import Playwright, sync_playwright, expect
 from playwright.async_api import async_playwright
-from bs4 import BeautifulSoup
 import json
 import pandas as pd
 import datetime as dt
 import re
-import cerebro
 import amazon
 import time
 import asyncio
 import os
 import shutil
 import postgresql
+from utility import get_day_of_week
+from playwright_setup import setup_playwright, login_amazon
 import logging
 import logger_setup
 
@@ -21,117 +21,9 @@ logger = logging.getLogger(__name__)
 with open('config.json') as f:
     config = json.load(f)
 
-async def scrape_cerebro(playwright: Playwright, marketplaces=['US', 'CA']) -> list:
-    logger.info("Scraping Cerebro. . .")
-    # playwright = sync_playwright().start() # PLS COMMENT THIS! FOR TESTING PURPOSES ONLY!
-    storage = 'storage_helium10.json'
-    browser = await playwright.chromium.launch(headless=False, slow_mo=50)
-    context = await browser.new_context(storage_state=storage)
-    page = await context.new_page()
-    page.set_default_timeout(60000)
-    # logs in
-    await page.goto(f'https://members.helium10.com/')
-    if await page.is_visible('input#loginform-email'):
-        await page.fill('input#loginform-email', config['helium_email'])
-        await page.fill('input#loginform-password', config['helium_password'])
-        await page.click('button[type=submit]')
-    # goes to cerebro main account
-    await asyncio.sleep(5)
-    await page.goto(f'https://members.helium10.com/cerebro?accountId={config["helium_id"]}')
-
-    # download cerebro for each product category in each marketplaces
-    for country in marketplaces:
-        marketplace_options = {'US': 'United States www.amazon.com',
-                               'CA': 'Canada www.amazon.ca'}
-        await page.locator(".sc-dwkDbJ").click()  # Watchout for change in
-        await page.get_by_role("option", name=marketplace_options[country]).click()
-        competitors_list = pd.read_excel('Competitor ASINs.xlsx', sheet_name=country)
-        for index, row in competitors_list.iterrows():
-            # retrieves competitor asins
-            competitors = competitors_list[competitors_list.Category == row.Category].iloc[:, 1:].values
-            competitors = re.sub(r'\W+', ' ', str(competitors)).strip()
-            logger.info(f"\tDownloading Cerebro {competitors}")
-            # deletes asins
-            input_box = page.locator('input[placeholder="Enter up to 10 product ASINs"]')
-            await input_box.click()
-            for _ in range(50):
-                await page.keyboard.press('Backspace')
-            # fills competitors asins
-            await input_box.fill(competitors)
-            get_keywords_button = page.locator('button[data-testid="getkeywords"]')
-            box = await get_keywords_button.bounding_box() # clicks outside to bypass greyed out button
-            await page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"])
-            await get_keywords_button.click()
-            # checks for run new search dialog
-            await asyncio.sleep(5)
-            if await page.is_visible('button[data-testid="runnewsearch"]'):
-                await page.click('button[data-testid="runnewsearch"]')
-            # downloads data
-            await page.click('button[data-testid="exportdata"]')
-            async with page.expect_download(timeout=180000) as download_info:   # saves in tmp folder
-                await page.click('div[data-testid="csv"]')
-            download = await download_info.value
-            # wait for download to complete
-            path = await download.path()
-            # read to tmp csv, then update to db
-            cerebro.insert_data(path, country=country, category=row.Category, asin=row.ASIN,
-                                        date=dt.datetime.now().date(), platform='amazon')
-    # ---------------------
-    # save storage & closes browser
-    await context.storage_state(path=storage)
-    await context.close()
-    await browser.close()
-
-
-async def start_playwright_page(playwright: Playwright, storage_state=None, headless=False, default_timeout=None):
-    """Initialize a new playwright's chromium page
-    
-    Args:
-        storage_state (json): storage state of the last session.
-        headless (bool): with or without a browser.
-        default_timeout (int): default timeout in seconds before raising an error.
-        
-    Return:
-        Playwright.chromium.launch.browser.new_context.new_page()"""
-    browser = await playwright.chromium.launch(headless=headless)
-    context = await browser.new_context(storage_state=storage_state) # >>> storage_state=storage
-    page = await context.new_page()
-    if default_timeout:
-        page.set_default_timeout(default_timeout)
-    return page
-
-
-async def login_amazon(page=None):
-    """Logs in to Amazon Sellercentral using the credentials stored in `config.json'
-    Args:
-        page (playwright.page)
-    Return:
-        None"""
-    await page.goto("https://sellercentral.amazon.com/signin?")
-    await asyncio.sleep(5)
-    account_button = page.get_by_role("button", name=f"{config['amazon_name']} {config['amazon_email']}")
-    # login page requires only password
-    if await account_button.count():
-        await account_button.click()
-        await page.get_by_label("Password").fill(config['amazon_password'])
-        await page.get_by_role("button", name="Sign in").click()
-    # login page requires email & password
-    elif await page.is_visible('input#signInSubmit'):
-        await page.get_by_label("Email or mobile phone number").fill(config['amazon_email'])
-        await page.get_by_label("Password").fill(config['amazon_password'])
-        await page.get_by_role("button", name="Sign in").click()
-        await asyncio.sleep(10)
-        # selects store account and country
-        if await page.is_visible(f"button[name='{config['store_name']}']"):
-            await page.get_by_role("button", name=f"{config['store_name']}").click()
-            await page.get_by_role("button", name="United States").click()
-            await page.get_by_role("button", name="Select Account").click()
-    await asyncio.sleep(10)
-    return
-
 
 # generates downloads for each active product
-async def download_sqp(page=None, country='US', reporting_range='weekly', date_report=None, view='brand', asin=None):
+async def download_sqp(page, country='US', reporting_range='weekly', date_report=None, view='brand', asin=None):
     """Downloads Search Query Performance Reports and save it to a temporary path
 
     Args:
@@ -142,7 +34,7 @@ async def download_sqp(page=None, country='US', reporting_range='weekly', date_r
         view (str): `brand` or `asin` reporting view.
         asin (str): asin to download.
 
-    Return: MY HEAD HURT LOL!!
+    Return:
         path
     """
     reporting_range_formats = {'weekly': 'weekly-week', 'monthly': 'monthly-year=2023&2023-month=2023-04-30', 'quarterly': 'quarterly-year=2023&2023-quarter=2023-03-31'}
@@ -248,9 +140,10 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_rep
         date_reports (str|dt.date): weekly datesto download.
         view (str): select which viewing report to download.
     Return:"""
-    # playwright = sync_playwright().start() # PLS COMMENT THIS! FOR TESTING PURPOSES ONLY!
     logger.info("Starting Search Query Performance Analytics. . .")
-    page = await start_playwright_page(playwright=playwright, storage_state='storage_sellercentral_amazon.json', headless=False, default_timeout=60000)
+
+    page, browser, context = await setup_playwright(storage_state='storage_sellercentral_amazon.json', headless=False, default_timeout=60000)
+
     logger.info("@SearchQueryPerformance Logging in")
     await login_amazon(page)
 
