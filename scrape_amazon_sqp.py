@@ -8,9 +8,10 @@ import amazon
 import time
 import asyncio
 import os
+import re
 import shutil
 import postgresql
-from utility import get_day_of_week
+from utility import get_day_of_week, reposition_columns
 from playwright_setup import setup_playwright, login_amazon
 import logging
 import logger_setup
@@ -21,174 +22,318 @@ logger = logging.getLogger(__name__)
 with open('config.json') as f:
     config = json.load(f)
 
+storage_sellercentral = 'storage_sellercentral_amazon.json'
 
-# generates downloads for each active product
-async def download_sqp(page, country='US', reporting_range='weekly', date_report=None, view='brand', asin=None):
-    """Downloads Search Query Performance Reports and save it to a temporary path
+table_names = {
+    'asin': 'brand_analytics.search_query_performance_asin_view',
+    'brand': 'brand_analytics.search_query_performance_brand_view'
+}
+
+async def generate_download(page, marketplace='US', reporting_range='weekly', date_report=None, view='brand', asin=''):
+    """
+    Downloads Search Query Performance Reports.
 
     Args:
-        page (Playwright.page)
-        country (str): 'US', 'CA'.
-        reporting_range (str): 'weekly', 'monthly', 'quarterly'.
-        dates (str|list|dt.date): date to download YYYY-MM-DD.
-        view (str): `brand` or `asin` reporting view.
-        asin (str): asin to download.
+    - page (Playwright.page)
+    - marketplace (str): 'US', 'CA'.
+    - reporting_range (str): 'weekly', 'monthly', 'quarterly'.
+    - dates (str|list|dt.date): date to download YYYY-MM-DD.
+    - view (str): `brand` or `asin` reporting view.
+    - asin (str): asin to download.
 
     Return:
-        path
+    - None
     """
-    reporting_range_formats = {'weekly': 'weekly-week', 'monthly': 'monthly-year=2023&2023-month=2023-04-30', 'quarterly': 'quarterly-year=2023&2023-quarter=2023-03-31'}
+    logger.info(f"@SearchQueryPerformance Querying {view} {asin} ({marketplace}) {date_report}")
     
-    sqp_url = {'brand': "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-brands-view&brand={}&reporting-range={}&{}={}&country-id={}",
-                'asin': "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-asin-view&asin={}&reporting-range={}&{}={}&country-id={}"}
+    reporting_range_formats = {'weekly': 'weekly-week', 'monthly': 'monthly-year=2023&2023-month=2023-04-30', 'quarterly': 'quarterly-year=2023&2023-quarter=2023-03-31'} # unfinished
+    sqp_url = {
+                "brand": "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-brands-view" + 
+                            "&brand={}&reporting-range={}&{}={}&country-id={}".format(
+                            config['amazon_brand_id'], reporting_range, reporting_range_formats[reporting_range], 
+                            date_report, marketplace.lower()
+                            ),
+                "asin": "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-asin-view" +
+                            "&asin={}&reporting-range={}&{}={}&country-id={}".format(
+                            asin, reporting_range, reporting_range_formats[reporting_range], 
+                            date_report, marketplace.lower()
+                            )
+    }
 
-    logger.info(f"@SearchQueryPerformance Querying {asin} ({country}) {date_report}")
-    await page.goto(sqp_url[view].format(config['amazon_brand_id'] if view == 'brand' else asin, 
-                                            reporting_range, reporting_range_formats[reporting_range], date_report, country.lower()))  # refreshes page as soon as it changes marketplace
-    # await page.click('[id*="katal-id-"]')  # *= starts with e.g. id=katal-id-0
-    # await page.click(f'[value="{country}" i][role="option"]') # deletes inputs after changing 
-    if view == 'asin':
-        await page.click('[id="asin"]')
-        await page.get_by_text(asin).click()
-    # await page.locator('kat-dropdown[id="reporting-range"]').last.click()
-    # await page.locator(f'kat-option[value="{reporting_range}" i]').last.click()
-    # await page.click(f'[id="{reporting_range_formats[reporting_range]}" i]')
-    # await page.click(f'kat-option[value="{date_report}"]')
+    await page.goto(sqp_url[view])  
     await page.get_by_role("button", name="Apply").click()
     await page.get_by_role("button", name="Generate Download").click()
     await asyncio.sleep(5)
 
     try: 
-        logger.info("TRYING")
-        async with page.expect_popup() as page2_info:
+        logger.info("Generating Download. . .")
+
+        async with page.expect_popup(timeout=150000) as page2_info:
+            # selects comprehensive view that's only available in brand view
+            if view == 'brand':
+                radio_button = page.locator('input[value="COMPREHENSIVE"]')
+                await radio_button.click(force=True)
+
             await page.locator("#downloadModalGenerateDownloadButton").get_by_role("button", name="Generate Download").click()
             await asyncio.sleep(5)
-            # error, click once
-            error_exists = await page.locator('#downloadModalGenerateDownloadButton').is_visible(timeout=300)
-            if error_exists:
-                logger.info("\t#ERROR: Try again")
-                await page.locator("#downloadModalGenerateDownloadButton").click()
-                await asyncio.sleep(5)
+
+            # spam error to force download
+            for _ in range(1, 100):
+                try:
+                    error_exists = await page.locator('#downloadModalGenerateDownloadButton').is_visible()
+                    if not error_exists:
+                        break
+                    logger.warning("\t#ERROR: Trying again")
+                    await page.locator("#downloadModalGenerateDownloadButton").click(force=True)
+                    await asyncio.sleep(5)
+
+                except Exception as error:
+                    logger.error(error) 
+  
             # closes download manager page every popup            
             page2 = await page2_info.value 
             await page2.close()
             logger.info('\tDownload success!')
-    except:
-        logger.info("Failed to download")
+
+    except Exception as error:
+        logger.error(f"Failed to download\n{error}")
         pass
+
     return
 
 
-async def download_reports(page, n_view_rows=25, n_pages=1):
-    """Waits for all downloaded reports to be ready to download and then downloads all files in the download manager.
+async def download_reports(page=None, n_downloads=100):
+    """
+    Waits for all downloaded reports to be ready to download and then downloads all files in the download manager.
     
     Args:
-        page (Playwright.page)
-        n_view_rows (int): Number of rows in the page to download [10, 25, 50, 100].
-        pages (int): Number of pages to download.
-        path (str, os.path): Path to downloads are saved.
+    - page (Playwright.page)
+    - n_downloads (int): Number of reports to download. Max is 100. No pagination on Views 100.
 
-    Return: downloaded file paths (list)"""
-    downloaded_filepaths = []
+    Returns: 
+    - downloaded_filepaths (list)
+    """
+    if not page:
+        page, browser, context = await setup_playwright(storage_state=storage_sellercentral, 
+                                                                    headless=False, default_timeout=60000)
+        await login_amazon(page)
+
     await page.goto('https://sellercentral.amazon.com/brand-analytics/download-manager')
     await asyncio.sleep(10)
+
     # waits for progress to be completed
     while await page.is_visible('text=In Progress'):
         logger.info("Download is still In Progress. . .\n\tRefreshing the page")
         await page.reload()
         await asyncio.sleep(15)
-    # selects view N rows
-    if n_view_rows != 25:
-        await page.click('.select-header')
-        await page.click(f'text=View {n_view_rows} rows')
-    # downloads each report
-    download_buttons = await page.get_by_role("row").get_by_text("Download").all()
-    logger.info(f"LENGTH OF DOWNLOAD BUTTONS: {len(download_buttons)}")
-    for download_button in download_buttons:
+
+    # selects view 100 rows [10, 25 (default), 50, 100]
+    await page.click('.select-header')
+    await page.click('text=View 100 rows')
+
+    # locates all download buttons
+    download_buttons = await page.locator("role=row >> text=Download").all()
+    logger.info(f"Commencing Downloads.\n Total Download Buttons: {len(download_buttons) - 1}")
+
+    # downloads report from top to bottom
+    downloaded_filepaths = []   # download_button starts at index 1
+    max_downloads_per_page = 100 + 1
+    count = 1   # total counter
+    inner_count = 1 # counter for current iteration from 1 to 101
+
+    while count <= n_downloads:
         try:
-            await download_button.click()
+            await download_buttons[count].click()
+
             async with page.expect_download() as download_info:
                 async with page.expect_popup() as page2_info:
                     page2 = await page2_info.value    # download popup closes immediately
+
+            # download file path and name
             download = await download_info.value
             csv_path = await download.path() # random guid in a temp folder
             filename = download.suggested_filename # US_Search_Query_Performance_ASIN_View_Week_2022_12_31.csv
-            country = filename.split('_')[0]
-            # retrieves asin if it exists
-            asin = ''
+            marketplace = filename.split('_')[0]
+            view = 'Brand'
+
+            # retrieves asin to filename if it exists
             if 'ASIN' in filename.upper():
+                view = 'ASIN'
                 metadata = pd.read_csv(csv_path, nrows=0)
                 pattern = r'\["(.*?)"\]'
-                asin = re.search(pattern, metadata.columns[0]).group(1) + '_'
-                filename = filename.split('.')[0] + f' [{asin}]' + filename.split('.')[1] # US_Search_Query_Performance_ASIN_View_Week_2022_12_31 [B0B2B9X6P4].csv
+                asin = re.search(pattern, metadata.columns[0]).group(1)
+                filename = filename.split('.')[0] + f' [{asin}].' + filename.split('.')[1] # US_Search_Query_Performance_ASIN_View_Week_2022_12_31 [B0B2B9X6P4].csv
+
             # copies file to folder
             logger.info(f"Copying {filename} to SQP Downloads Folder")
-            saved_filepath = os.path.join(os.getcwd(), 'SQP Downloads', f'{filename}')
+            saved_filepath = os.path.join(os.getcwd(), 'SQP Downloads', view, marketplace, f'{filename}')
+            os.makedirs(os.path.dirname(saved_filepath), exist_ok=True)
             shutil.copyfile(csv_path, saved_filepath)
             downloaded_filepaths.append(saved_filepath)
-        except Exception as e:
-            logger.error(e)
+
+            # next page
+            if inner_count == max_downloads_per_page:
+                await page.click('span[part="pagination-nav-right"].nav.item')
+                download_buttons = await page.locator("role=row >> text=Download").all()
+                inner_count = 0
+
+            inner_count += 1
+            count += 1
+
+
+        except Exception as error:
+            logger.error(error)
+
     return downloaded_filepaths
 
 
-async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_reports=[], view=['brand', 'asin']) -> None:
-    """Download weekly Search Query Performance per ASIN for each marketplace.
-        Then inserts data to search_query_performance
+def combine_data(directory=None, file_paths=[], file_extension='.csv'):
+    """
+    Combines files in a directory and/or in file_paths.
+    Inserts `marketplace` and `date`.
+    Returns pandas dataframe.
+    """
+    # gets all similar file types in a directory
+    if directory:
+        for dirpath, dirnames, filenames in os.walk(directory):
+            for filename in filenames:
+                if file_extension in filename:
+                    file_paths.append(os.path.join(dirpath, filename))
+    
+    # combines data
+    combined_data = pd.DataFrame()
+
+    for file_path in file_paths:
+        logger.info(f"Combining {file_path}")
+        metadata = pd.read_csv(file_path, nrows=0)
+        data     = pd.read_csv(file_path, skiprows=1)
+
+        if data.empty:
+            logger.info("\tEmpty data")
+            continue
+
+        # cleans & adds metadata
+        for col in metadata.columns:
+            splitted_col = col.split('=')
+            if len(splitted_col) > 1:
+                value = re.sub(r'\W', '', splitted_col[1])
+
+            if re.search('ASIN', col, re.IGNORECASE):
+                data['asin'] = value
+
+            elif re.search('Reporting Range', col, re.IGNORECASE):
+                data['reporting_range'] = value
+
+        data['marketplace'] = re.search(r'/(\w*)_Search_Query', file_path)[1]
+
+        # calculates week number, start & end date
+        data.rename(columns={'Reporting Date': 'reporting_date'}, inplace=True)
+        data['reporting_date'] = pd.to_datetime(data['reporting_date'])
+        data['end_date']       = data['reporting_date']
+        data['start_date']     = data['end_date'] - dt.timedelta(days=6)
+        data['week']           = data['end_date'].dt.isocalendar().week
+
+        # reposition
+        view = re.search(r'(ASIN|Brand)', file_path)[1].lower()
+        col_positions = {
+            'asin': {'reporting_date': 0, 'reporting_range': 1, 'marketplace': 2, 'asin': 3, 'Search Query': 4},
+            'brand': {'reporting_date': 0, 'reporting_range': 1, 'marketplace': 2, 'Search Query': 3}
+        }
+        data = reposition_columns(data, col_positions[view])
+
+        combined_data = pd.concat([data, combined_data], ignore_index=True)
+
+    # drop duplicates on primary keys
+    pkeys = [key for key in col_positions[view]]
+    combined_data = combined_data.drop_duplicates(subset=pkeys)
+    
+    return combined_data
+
+
+
+async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_reports=[], view=['brand', 'asin'], headless=True) -> None:
+    """
+    Download weekly Search Query Performance per ASIN for each marketplace.
+    Then inserts data to search_query_performance
+
     Args:
-        playwright (Playwright)
-        marketpalces (str): abbreviated countries to download from.
-        date_reports (str|dt.date): weekly datesto download.
-        view (str): select which viewing report to download.
-    Return:"""
+    - playwright (Playwright)
+    - marketpalces (str): abbreviated countries to download from.
+    - date_reports (str|dt.date): weekly datesto download.
+    - view (str): select which viewing report to download.
+
+    Returns:
+    - None
+    """
     logger.info("Starting Search Query Performance Analytics. . .")
 
-    page, browser, context = await setup_playwright(storage_state='storage_sellercentral_amazon.json', headless=False, default_timeout=60000)
-
-    logger.info("@SearchQueryPerformance Logging in")
+    page, browser, context = await setup_playwright(storage_state=storage_sellercentral, 
+                                                                    headless=headless, default_timeout=180000)
     await login_amazon(page)
-
 
     # downloads for each marketplace, date_report, asin
     downloads = 0
     downloaded_filepaths = []
-    asinView_maxDownloads = 100
-    for country in marketplaces:
+
+    for marketplace in marketplaces:
+
         if view == 'asin':
-            active_asins = amazon.get_amazon_products(country=country)
+
+            # gets all active asins
+            logger.info(f"Getting all active ASINs in {marketplace}")
+            with postgresql.setup_cursor() as cur:
+                cur.execute(f"""SELECT DISTINCT asin FROM listings_items.summaries WHERE status @> ARRAY['DISCOVERABLE', 'BUYABLE'] AND marketplace = 'US'
+                                            AND date = (SELECT MAX(date) FROM listings_items.summaries)
+                                            AND asin IN (SELECT DISTINCT asin FROM listings_items.summaries WHERE marketplace = '{marketplace}');""")
+                active_asins = [asin['asin'] for asin in cur.fetchall()]
+            logger.info(f"\t{len(active_asins)} ASINs are discoverable")
+
             for date_report in date_reports:
                 for asin in active_asins:
-                    # checks if it exists on the db
-                    query = """SELECT EXISTS(SELECT * FROM search_query_performance_asin_view WHERE asin = %s AND reporting_date = %s)"""
-                    exists = postgresql.sql_to_dataframe('ppc', query, (asin, date_report))['exists'].item()
-                    if exists:
-                        logger.info("@SQP {} {} already exists \n\tSkipping...".format(asin, date_report))
-                        continue
-                    await download_sqp(page, country, date_report=date_report, view=view, asin=asin)
+                    await generate_download(page, marketplace, date_report=date_report, view=view, asin=asin)
                     downloads += 1
-                    if downloads == asinView_maxDownloads:
-                        # download reports via `Downloads Manager`
-                        logger.info("@SearchQueryPerformance Downloading reports")
-                        downloaded_filepaths += await download_reports(page, n_view_rows=asinView_maxDownloads)
-                        downloads = 0
 
         elif view == 'brand':
+
             for date_report in date_reports:
-                await download_sqp(page, country, date_report=date_report, view=view)
+                await generate_download(page, marketplace, date_report=date_report, view=view)
+                downloads += 1
 
     # download reports via `Downloads Manager`
     logger.info("@SearchQueryPerformance Downloading reports")
-    downloaded_filepaths = await download_reports(page, n_view_rows=100)
+    downloaded_filepaths = await download_reports(page, n_downloads=downloads)
 
     # inserts to amazon db
-    table_name = 'search_query_performance_{}_view'.format(view)
-    for downloaded_filepath in downloaded_filepaths:
-        amazon.insert_sqp_reports(downloaded_filepath)
+    table_name = table_names[view]
+    data = combine_data(file_paths=downloaded_filepaths)
+    postgresql.upsert_bulk(table_name, data, 'pandas')
 
-    # ---------------------
     # saves storage & closes browser.
-    # await context.storage_state(path=storage)
-    # await context.close()
-    # await browser.close()
+    await context.storage_state(path = storage_sellercentral)
+    await context.close()
+    await browser.close()
+
+
+def create_table(view, drop_table_if_exists=False):
+    views_name = {'asin': 'ASIN', 'brand': 'Brand'}
+    sqp_directory = os.path.join(os.getcwd(), 'SQP Downloads', views_name[view])
+    data = combine_data(sqp_directory)
+
+    table_name = table_names[view]
+    with postgresql.setup_cursor() as cur:
+        if drop_table_if_exists:
+            cur.execute(f"DROP TABLE IF EXISTS {table_name};")
+
+        primary_keys = {
+            'asin': 'PRIMARY KEY (reporting_date, reporting_range, marketplace, asin, search_query)',
+            'brand': 'PRIMARY KEY (reporting_date, reporting_range, marketplace, search_query)'
+        }
+
+        postgresql.create_table(cur, data, file_extension='pandas', table_name=table_name, keys=primary_keys[view])
+
+        postgresql.update_updated_at_trigger(cur, table_name)
+
+        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 
 async def main():
@@ -201,15 +346,17 @@ async def main():
         # cur = setup_cursor().connect('ppc')
         # cur.execute("SELECT DISTINCT(reporting_date) FROM search_query_performance_asin_view GROUP BY reporting_date HAVING COUNT(DISTINCT(asin)) < 10 ORDER BY reporting_date;")
         # date_reports = cur.fetchall()
-        current_date = dt.date.today()
-        start_date = dt.date(2023, 7, 1)
-        sundays = []
-        while start_date < current_date:
-            sundays.append(str(start_date))
+        current_date = dt.date.today() - dt.timedelta(weeks=1)
+        end_date = dt.date(2023, 1, 20)
+        start_date = get_day_of_week(dt.date(2023, 1, 1), 'Saturday')
+        saturdays = []
+        while start_date < end_date:
+            saturdays.append(str(start_date))
             start_date += dt.timedelta(days=7)
             # date_report = amazon.end_of_week_date(start_date)
             # date_report = str(date_report['reporting_date'])
-        task2 = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US'], date_reports=sundays, view='brand'))
+        task2 = asyncio.create_task(scrape_sqp(playwright, marketplaces=['CA'], date_reports=saturdays, view='brand'))
+        # task2 = asyncio.create_task(download_reports(n_downloads=60))
         # to insert to db OR NOT????
         # cerebro_temps = await task1
         sqp_temps     = await task2
@@ -218,4 +365,8 @@ async def main():
 if __name__ == '__main__':
     # with sync_playwright() as playwright:
     #     asyncio.run(scrape_sqp(playwright))
-    asyncio.run(main())
+    # asyncio.run(main())
+    data = combine_data('SQP Downloads/Brand/CA')
+    postgresql.upsert_bulk(table_names['brand'], data, 'pandas')
+
+    pass

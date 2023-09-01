@@ -100,7 +100,8 @@ def camel_to_snake(name):
     # separates single capital letters with number in the middle (e.g. B2B)
     name = re.sub(r'([A-Z][0-9][A-Z])', r'_\1_', name)
     name = re.sub(r'([A-Z][0-9][A-Z])', convert_to_lower, name)
-    # name = re.sub(r'([A-Z][0-9][A-Z])', convert_to_lower, name)
+    # separates digit/s with a succeeding capital letter in between spaces (e.g. 'Cart Adds: 2D Shipping')
+    name = re.sub(r' ([0-9]+[A-Z] )', convert_to_lower, name)
     # separates 2 or more consecutive capital letters (e.g. SKU, ASIN)
     name = re.sub(r'([A-Z]{2,})', r'_\1_', name)
     name = re.sub(r'_[A-Z]{2,}', convert_to_lower, name)
@@ -423,8 +424,9 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             raise Exception
         data = data[ordered_columns]
 
-        # Replace null values with proper format
-        data = data.replace(['None', 'nan', 'NaN', np.nan], ['', '', '', ''])
+        # Replace null values with proper null format in csv
+        non_int_columns = [col for col, dtype in data.dtypes.items() if dtype != 'Int64']
+        data[non_int_columns].replace(['None', 'nan', 'NaN', np.nan], ['', '', '', ''], inplace = True)
 
         # Create an in-memory CSV
         csv_buffer = io.StringIO()
