@@ -282,7 +282,7 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_rep
             # gets all active asins
             logger.info(f"Getting all active ASINs in {marketplace}")
             with postgresql.setup_cursor() as cur:
-                cur.execute(f"""SELECT DISTINCT asin FROM listings_items.summaries WHERE status @> ARRAY['DISCOVERABLE', 'BUYABLE'] AND marketplace = '{markeplace}'
+                cur.execute(f"""SELECT DISTINCT asin FROM listings_items.summaries WHERE status @> ARRAY['DISCOVERABLE', 'BUYABLE'] AND marketplace = '{marketplace}'
                                             AND date >= '{min(date_reports)}'::DATE - INTERVAL '6 days' AND date <= '{max(date_reports)}'::DATE
                                             AND asin IN (SELECT DISTINCT asin FROM listings_items.summaries WHERE marketplace = '{marketplace}');""")
                 active_asins = [asin['asin'] for asin in cur.fetchall()]
@@ -350,7 +350,7 @@ async def main():
             saturdays.append(str(start_date))
             start_date += dt.timedelta(days=7)
 
-        for view in ['brand', 'asin']:
+        for view in ['asin']:
             task = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US', 'CA'], date_reports=saturdays, view=view))
             await task
 
