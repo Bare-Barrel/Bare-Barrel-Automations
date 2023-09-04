@@ -282,8 +282,8 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_rep
             # gets all active asins
             logger.info(f"Getting all active ASINs in {marketplace}")
             with postgresql.setup_cursor() as cur:
-                cur.execute(f"""SELECT DISTINCT asin FROM listings_items.summaries WHERE status @> ARRAY['DISCOVERABLE', 'BUYABLE'] AND marketplace = 'US'
-                                            AND date = (SELECT MAX(date) FROM listings_items.summaries)
+                cur.execute(f"""SELECT DISTINCT asin FROM listings_items.summaries WHERE status @> ARRAY['DISCOVERABLE', 'BUYABLE'] AND marketplace = '{markeplace}'
+                                            AND date >= '{min(date_reports)}'::DATE - INTERVAL '6 days' AND date <= '{max(date_reports)}'::DATE
                                             AND asin IN (SELECT DISTINCT asin FROM listings_items.summaries WHERE marketplace = '{marketplace}');""")
                 active_asins = [asin['asin'] for asin in cur.fetchall()]
             logger.info(f"\t{len(active_asins)} ASINs are discoverable")
@@ -337,36 +337,23 @@ def create_table(view, drop_table_if_exists=False):
 
 
 async def main():
+    """
+    Updates ASIN & Brand view last two weeks of data
+    """
     async with async_playwright() as playwright:
         last_week = dt.date.today() - dt.timedelta(weeks=1)
-        date_report  = amazon.end_of_week_date(last_week)
-        # task1 = asyncio.create_task(scrape_cerebro(playwright, ['CA']))
-        # date_report = ['2022-09-10', '2022-09-17', '2022-09-24', '2022-10-01', '2022-10-08', '2022-10-15', '2022-10-22', '2022-09-10', '2023-01-07', '2023-01-14', '2023-01-21', '2023-01-28']
-        import postgresql
-        # cur = setup_cursor().connect('ppc')
-        # cur.execute("SELECT DISTINCT(reporting_date) FROM search_query_performance_asin_view GROUP BY reporting_date HAVING COUNT(DISTINCT(asin)) < 10 ORDER BY reporting_date;")
-        # date_reports = cur.fetchall()
-        current_date = dt.date.today() - dt.timedelta(weeks=1)
-        end_date = dt.date(2023, 1, 20)
-        start_date = get_day_of_week(dt.date(2023, 1, 1), 'Saturday')
+        end_date = get_day_of_week(last_week, 'Saturday')
+        start_date = end_date - dt.timedelta(weeks=1)
+
         saturdays = []
-        while start_date < end_date:
+        while start_date <= end_date:
             saturdays.append(str(start_date))
             start_date += dt.timedelta(days=7)
-            # date_report = amazon.end_of_week_date(start_date)
-            # date_report = str(date_report['reporting_date'])
-        task2 = asyncio.create_task(scrape_sqp(playwright, marketplaces=['CA'], date_reports=saturdays, view='brand'))
-        # task2 = asyncio.create_task(download_reports(n_downloads=60))
-        # to insert to db OR NOT????
-        # cerebro_temps = await task1
-        sqp_temps     = await task2
+
+        for view in ['brand', 'asin']:
+            task = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US', 'CA'], date_reports=saturdays, view=view))
+            await task
 
 
 if __name__ == '__main__':
-    # with sync_playwright() as playwright:
-    #     asyncio.run(scrape_sqp(playwright))
-    # asyncio.run(main())
-    data = combine_data('SQP Downloads/Brand/CA')
-    postgresql.upsert_bulk(table_names['brand'], data, 'pandas')
-
-    pass
+    asyncio.run(main())

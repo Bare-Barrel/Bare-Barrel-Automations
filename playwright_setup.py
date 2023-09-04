@@ -82,3 +82,24 @@ async def login_amazon(page):
 
     await asyncio.sleep(10)
     return
+
+
+async def login_scale_insights(page):
+    """
+    Logs in to Scale Insights using the credentials stored in `config.json'
+    """
+    logger.info("Logging in to Scale Insights")
+
+    await page.goto("https://portal.scaleinsights.com")
+    await asyncio.sleep(5)
+
+    login_button = page.get_by_role("button", name="Log in")
+
+    # login page requires only password
+    if await login_button.count():
+        await page.get_by_label("User Name").fill(config['scale_insights_user'])
+        await page.get_by_label("Password").fill(config['scale_insights_password'])
+        await login_button.click()
+
+    await asyncio.sleep(10)
+    return
