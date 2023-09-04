@@ -2,6 +2,7 @@ import datetime as dt
 from sp_api.api import ReportsV2
 from sp_api.base.reportTypes import ReportType
 from sp_api.base import Marketplaces
+from utility import to_list
 import time
 import pandas as pd
 import postgresql
@@ -160,10 +161,8 @@ def download_combine_reports(start_date, end_date, marketplace, asin_granularity
 
 
 def update_data(asin_granularity='PARENT', marketplaces=['US', 'CA'], start_date=(dt.datetime.utcnow() - dt.timedelta(days=7)), end_date=(dt.datetime.utcnow() - dt.timedelta(days=1))):
-    if isinstance(marketplaces, str):
-        marketplaces = [marketplaces]
-
-    for marketplace in marketplaces:
+    for marketplace in to_list(marketplaces):
+        logger.info(f"Updating data {asin_granularity} {marketplace} {start_date} - {end_date}")
         data = download_combine_reports(start_date, end_date, marketplace, asin_granularity=asin_granularity)
         table_name = base_table_name + f"_{asin_granularity.lower()}"
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')

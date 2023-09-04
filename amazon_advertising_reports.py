@@ -172,29 +172,34 @@ def download_report(report_id, root_directory, report_name):
 
     while True:
         logger.info(f"Downloading {report_name}")
-        response = Reports(account=marketplace, marketplace=Marketplaces[marketplace]).get_report(reportId=report_id)
-        status, url = response.payload['status'], response.payload['url']
-        logger.info(f"\tReport status: {status}")
 
-        if status == 'COMPLETED':
-            # Download the report
-            response = requests.get(url)
+        try:
+            response = Reports(account=marketplace, marketplace=Marketplaces[marketplace]).get_report(reportId=report_id)
+            status, url = response.payload['status'], response.payload['url']
+            logger.info(f"\tReport status: {status}")
 
-            if response.status_code == 200:
-                file_path = os.path.join(directory, report_name + '.json.gz')
+            if status == 'COMPLETED':
+                # Download the report
+                response = requests.get(url)
 
-                with open(file_path, 'wb') as file:
-                    file.write(response.content)
+                if response.status_code == 200:
+                    file_path = os.path.join(directory, report_name + '.json.gz')
 
-                logger.info("File downloaded successfully.")
+                    with open(file_path, 'wb') as file:
+                        file.write(response.content)
 
-                return file_path
+                    logger.info("File downloaded successfully.")
 
-            else:
-                logger.info("Failed to download file.")
-                logger.info("\tRedownloading...")
+                    return file_path
 
-        time.sleep(30)
+                else:
+                    logger.info("Failed to download file.")
+                    logger.info("\tRedownloading...")
+
+        except Exception as error:
+            logger.error(error)
+
+        time.sleep(60)
 
 
 def request_download_reports(ad_product, report_type_id, group_by, start_date, end_date, directory, time_unit='DAILY', marketplace='US'):
