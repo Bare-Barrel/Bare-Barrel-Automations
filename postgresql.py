@@ -414,6 +414,12 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             # dumps jsonb
             if postgresql_data_type == 'jsonb':
                 data[column_name] = data[column_name].apply(json.dumps)
+            
+            if postgresql_data_type == 'boolean':
+                # not transforming string results to all `True`
+                data.replace({'False': False, 'false': False, '0': 0}, inplace=True)
+                data[column_name] = data[column_name].astype(bool)
+
             data[column_name] = data[column_name].astype(data_type)
 
         # orders columns by their ordinal position
