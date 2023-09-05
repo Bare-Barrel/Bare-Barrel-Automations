@@ -399,7 +399,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             logger.info(f"{column_name}, {postgresql_data_type}: {data_type}")
             # creates null non-existing columns
             if column_name not in data.columns:
-                data[column_name] = None
+                data[column_name] = ''
                 logger.info(f"\tMissing column: {column_name}")
             # percentage str columns
             if data_type in (int, float) and data[column_name].dtype == 'object' and data[column_name].str.contains('%').any():
