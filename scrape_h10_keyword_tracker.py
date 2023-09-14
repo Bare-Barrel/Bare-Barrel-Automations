@@ -23,29 +23,36 @@ logger = logging.getLogger(__name__)
 with open('config.json') as f:
     config = json.load(f)
 
-
-file_path = os.path.join(os.getenv('HOME'), 'Downloads', 'helium10-kt-B0BWWY7H3F-2023-08-28.csv')
-
 table_name = 'rankings.h10_keyword_tracker'
 
-data = pd.read_csv(file_path)
-data = data.replace({'-': np.nan, '>306': 306})
-numeric_cols = ['Search Volume', 'Organic Rank', 'Sponsored Position']
-data[numeric_cols] = data[numeric_cols].apply(pd.to_numeric)
-data['Date Added'] = pd.to_datetime(data['Date Added']).dt.tz_localize(get_localzone())
-data['Date Added'] = data['Date Added'].dt.tz_convert('UTC')
+file_path = os.path.join(os.getenv('HOME'), 'Downloads', 'helium10-kt-B0B6SYN9NX-2023-09-13.csv')
 
+def clean_data(file_path):
+    data = pd.read_csv(file_path)
+    data = data.replace({'-': np.nan, '>306': 306})
+    numeric_cols = ['Search Volume', 'Organic Rank', 'Sponsored Position']
+    data[numeric_cols] = data[numeric_cols].apply(pd.to_numeric)
+    data['Date Added'] = pd.to_datetime(data['Date Added']).dt.tz_localize(get_localzone())
+    data['Date Added'] = data['Date Added'].dt.tz_convert('UTC')
+    return data
 
-drop_table_if_exists = True
+def update_data(file_path):
+    data = clean_data(file_path)
+    postgresql.upsert_bulk(table_name, data, 'pandas')
 
-with postgresql.setup_cursor() as cur:
-    if drop_table_if_exists:
-        cur.execute(f"DROP TABLE IF EXISTS {table_name};")
+def create_table(drop_table_if_exists=False):
 
-    primary_keys = 'PRIMARY KEY (asin, marketplace, keyword, date_added)'
+    with postgresql.setup_cursor() as cur:
+        if drop_table_if_exists:
+            cur.execute(f"DROP TABLE IF EXISTS {table_name};")
 
-    postgresql.create_table(cur, data, file_extension='pandas', table_name=table_name, keys=primary_keys)
+        primary_keys = 'PRIMARY KEY (asin, marketplace, keyword, date_added)'
 
-    postgresql.update_updated_at_trigger(cur, table_name)
+        postgresql.create_table(cur, data, file_extension='pandas', table_name=table_name, keys=primary_keys)
 
-    postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+        postgresql.update_updated_at_trigger(cur, table_name)
+
+        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+
+if __name__ == '__main__':
+    update_data(file_path)

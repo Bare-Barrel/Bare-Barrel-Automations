@@ -350,7 +350,7 @@ async def main():
             saturdays.append(str(start_date))
             start_date += dt.timedelta(days=7)
 
-        for view in ['asin']:
+        for view in ['brand', 'asin']:
             task = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US', 'CA'], date_reports=saturdays, view=view))
             await task
 

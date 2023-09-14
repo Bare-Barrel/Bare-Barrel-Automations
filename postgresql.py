@@ -399,7 +399,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             logger.info(f"{column_name}, {postgresql_data_type}: {data_type}")
             # creates null non-existing columns
             if column_name not in data.columns:
-                data[column_name] = ''
+                data[column_name] = np.nan
                 logger.info(f"\tMissing column: {column_name}")
             # percentage str columns
             if data_type in (int, float) and data[column_name].dtype == 'object' and data[column_name].str.contains('%').any():
@@ -432,7 +432,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
 
         # Replace null values with proper null format in csv
         non_int_columns = [col for col, dtype in data.dtypes.items() if dtype != 'Int64']
-        data[non_int_columns].replace(['None', 'nan', 'NaN', np.nan], ['', '', '', ''], inplace = True)
+        data[non_int_columns] = data[non_int_columns].replace(['None', 'nan', 'NaN', np.nan], ['', '', '', ''])
 
         # Create an in-memory CSV
         csv_buffer = io.StringIO()

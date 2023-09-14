@@ -123,7 +123,7 @@ def clean_data(data):
 async def scrape_search_terms(start_date, end_date):
     # Retrieving ORIG asins
     with postgresql.setup_cursor() as cur:
-        cur.execute("""select distinct asin from listings_items.summaries where status @> ARRAY['DISCOVERABLE', 'BUYABLE']
+        cur.execute("""select distinct asin from listings_items.summaries where status @> ARRAY['DISCOVERABLE']
                     and created_date < '2023-01-01';""")
         asins = [row['asin'] for row in cur.fetchall()]
 
@@ -179,8 +179,8 @@ async def scrape_search_terms(start_date, end_date):
 
 async def main():
     # Create a date range
-    start_date = '2022-12-01'
-    end_date = '2023-06-01'
+    start_date = '2022-09-01'
+    end_date = '2022-12-31'
     date_range = pd.date_range(start_date, end_date)
 
     # Find unique months in the date range

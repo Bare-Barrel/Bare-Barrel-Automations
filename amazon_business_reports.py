@@ -128,6 +128,7 @@ def download_combine_reports(start_date, end_date, marketplace, asin_granularity
     """
     if isinstance(start_date, str):
         start_date = dt.datetime.strptime(start_date, '%Y-%m-%d')
+    if isinstance(end_date, str):
         end_date   = dt.datetime.strptime(end_date, '%Y-%m-%d')
 
     # Request reports
@@ -188,4 +189,21 @@ def create_table(asin_granularity, drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    update_data()
+    # update_data('PARENT')
+    # update_data('CHILD')
+
+    # Create a date range
+    start_date = dt.date(2023, 1, 1)
+    end_date = dt.date.today() - dt.timedelta(days=2)
+    date_range = pd.date_range(start_date, end_date)
+
+    # Find unique months in the date range
+    unique_months = date_range.to_period('M').unique()
+    
+    tasks = []
+    for marketplace in ['CA']:
+        for month in unique_months:
+            start_of_month = month.to_timestamp(how='start')
+            end_of_month = month.to_timestamp(how='end')
+            logger.info(f"Updating for {start_of_month} - {end_of_month}")
+            update_data('CHILD', marketplace, start_date=start_of_month, end_date=end_of_month)
