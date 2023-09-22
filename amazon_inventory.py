@@ -34,7 +34,7 @@ def get_data(marketplace='US'):
     return data
 
 
-def update_data(marketplaces=['US', 'CA']):
+def update_data(marketplaces=['US', 'CA', 'UK']):
     for marketplace in to_list(marketplaces):
         data = get_data(marketplace)
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
@@ -60,4 +60,4 @@ def create_table(marketplace='US', drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    update_data()
+    update_data(marketplaces='UK')

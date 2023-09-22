@@ -23,7 +23,7 @@ table_names = {'summaries': 'summaries', 'attributes': 'attributes', 'issues': '
 
 
 def get_all_listings_items(included_data=['summaries', 'attributes', 'issues', 'offers', 'fulfillmentAvailability', 'procurement'], 
-                            marketplaces=['US', 'CA']):
+                            marketplaces=['US', 'CA', 'UK']):
     """
     Gets multiple item listings
     Args
@@ -82,7 +82,7 @@ def get_all_listings_items(included_data=['summaries', 'attributes', 'issues', '
     return listings_data
 
 
-def update_data(tables=table_names.keys(), marketplaces=['US', 'CA']):
+def update_data(tables=table_names.keys(), marketplaces=['US', 'CA', 'UK']):
     # Gets all included data in one response
     included_data = [table_names[table_name] for table_name in tables]
     listings_data = get_all_listings_items(included_data, marketplaces)

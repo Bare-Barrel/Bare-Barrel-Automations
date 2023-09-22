@@ -255,7 +255,7 @@ def combine_data(directory=None, file_paths=[], file_extension='.json.gz'):
     return combined_data
 
 
-def update_data(ad_product, report_type, start_date, end_date, marketplaces=['US', 'CA']):
+def update_data(ad_product, report_type, start_date, end_date, marketplaces=['US', 'CA', 'UK']):
     """
     Adds upsert data step to request_download_reports by
     combining the downloaded files
@@ -274,7 +274,7 @@ def update_data(ad_product, report_type, start_date, end_date, marketplaces=['US
         postgresql.upsert_bulk(table_name, combined_data, file_extension='pandas')
 
 
-def update_all_data(start_date, end_date, ad_products = ['SPONSORED_BRANDS', 'SPONSORED_DISPLAY'], marketplaces=['US', 'CA']):
+def update_all_data(start_date, end_date, ad_products = ['SPONSORED_BRANDS', 'SPONSORED_DISPLAY'], marketplaces=['US', 'CA', 'UK']):
     gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
 
     for ad_product in to_list(ad_products):

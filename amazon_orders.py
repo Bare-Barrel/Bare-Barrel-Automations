@@ -54,7 +54,7 @@ def get_orders_items(order_ids=[], marketplace='US'):
     return df
 
 
-def update_data(marketplaces=['US', 'CA'], **kwargs):
+def update_data(marketplaces=['US', 'CA', 'UK'], **kwargs):
     """
     Updates orders data based from the last updated date
     """
@@ -123,7 +123,7 @@ def create_order_items_table(drop_table_if_exists=False):
         postgresql.upsert_bulk(order_items_table, data, file_extension='pandas')
 
 
-def update_missing_order_items(marketplaces=['US', 'CA']):
+def update_missing_order_items(marketplaces=['US', 'CA', 'UK']):
     for marketplace in to_list(marketplaces):
         while True:
             with postgresql.setup_cursor() as cur:

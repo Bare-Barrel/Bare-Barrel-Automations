@@ -39,7 +39,7 @@ def list_portfolios(marketplace='US', **kwargs):
     return payload
 
 
-def update_data(marketplaces=['US', 'CA']):
+def update_data(marketplaces=['US', 'CA', 'UK']):
     combined_data = pd.DataFrame()
 
     for marketplace in to_list(marketplaces):

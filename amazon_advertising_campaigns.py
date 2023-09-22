@@ -34,7 +34,7 @@ def list_campaigns(table_name, marketplace='US', **kwargs):
     return Campaigns(account=marketplace, marketplace=Marketplaces[marketplace]).list_campaigns(body=kwargs)
 
 
-def get_data(table_name, marketplaces=['US', 'CA'], **kwargs):
+def get_data(table_name, marketplaces=['US', 'CA', 'UK'], **kwargs):
     """
     Combines campaigns list of campaigns
     Returns
@@ -62,7 +62,7 @@ def get_data(table_name, marketplaces=['US', 'CA'], **kwargs):
     return data
 
 
-def update_data(table_names=table_names.keys(), marketplaces=['US', 'CA'], **kwargs):
+def update_data(table_names=table_names.keys(), marketplaces=['US', 'CA', 'UK'], **kwargs):
     for table_name in to_list(table_names):
         data = get_data(table_name, marketplaces, **kwargs)
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')

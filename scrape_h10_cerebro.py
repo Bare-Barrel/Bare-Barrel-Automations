@@ -10,7 +10,7 @@ import logger_setup
 logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
-async def scrape_cerebro(playwright: Playwright, marketplaces=['US', 'CA']) -> list:
+async def scrape_cerebro(playwright: Playwright, marketplaces=['US', 'CA', 'UK']) -> list:
     logger.info("Scraping Cerebro. . .")
     # playwright = sync_playwright().start() # PLS COMMENT THIS! FOR TESTING PURPOSES ONLY!
     storage = 'storage_helium10.json'

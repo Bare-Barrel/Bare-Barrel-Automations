@@ -241,7 +241,7 @@ def combine_data(directory=None, file_paths=[], file_extension='.json.gz'):
     return combined_data
 
 
-def update_data(start_date, end_date, marketplaces=['US','CA']):
+def update_data(start_date, end_date, marketplaces=['US', 'CA', 'UK']):
     """
     Download all reports & upserts to database.
     It can only update up to 31 days at a time.

@@ -251,7 +251,7 @@ def combine_data(directory=None, file_paths=[], file_extension='.csv'):
 
 
 
-async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA'], date_reports=[], view=['brand', 'asin'], headless=True) -> None:
+async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA', 'UK'], date_reports=[], view=['brand', 'asin'], headless=True) -> None:
     """
     Download weekly Search Query Performance per ASIN for each marketplace.
     Then inserts data to search_query_performance
@@ -351,7 +351,7 @@ async def main():
             start_date += dt.timedelta(days=7)
 
         for view in ['brand', 'asin']:
-            task = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US', 'CA'], date_reports=saturdays, view=view))
+            task = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US', 'CA', 'UK'], date_reports=saturdays, view=view))
             await task
 
 

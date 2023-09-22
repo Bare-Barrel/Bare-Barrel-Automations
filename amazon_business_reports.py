@@ -161,7 +161,7 @@ def download_combine_reports(start_date, end_date, marketplace, asin_granularity
     return combined_data
 
 
-def update_data(asin_granularity='PARENT', marketplaces=['US', 'CA'], start_date=(dt.datetime.utcnow() - dt.timedelta(days=7)), end_date=(dt.datetime.utcnow() - dt.timedelta(days=1))):
+def update_data(asin_granularity='PARENT', marketplaces=['US', 'CA', 'UK'], start_date=(dt.datetime.utcnow() - dt.timedelta(days=7)), end_date=(dt.datetime.utcnow() - dt.timedelta(days=1))):
     for marketplace in to_list(marketplaces):
         logger.info(f"Updating data {asin_granularity} {marketplace} {start_date} - {end_date}")
         data = download_combine_reports(start_date, end_date, marketplace, asin_granularity=asin_granularity)
