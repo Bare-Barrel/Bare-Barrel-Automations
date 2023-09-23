@@ -25,7 +25,7 @@ with open('config.json') as f:
 
 table_name = 'rankings.h10_keyword_tracker'
 
-file_path = os.path.join(os.getenv('HOME'), 'Downloads', 'helium10-kt-B0B6SYN9NX-2023-09-13.csv')
+file_path = os.path.join(os.getenv('HOME'), 'Downloads', 'helium10-kt-B0BWWY7H3F-2023-09-22.csv')
 
 def clean_data(file_path):
     data = pd.read_csv(file_path)

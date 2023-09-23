@@ -323,13 +323,14 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
     logger.info(f"Upserting {table_name}")
     with setup_cursor(autocommit=False) as (conn, cur):
         # Extracts table's schema (column names & data type)
-        cur.execute(f"""SELECT column_name, data_type FROM information_schema.columns
+        cur.execute(f"""SELECT column_name, data_type, is_generated FROM information_schema.columns
                         WHERE table_schema || '.' || table_name = '{table_name}'
                         ORDER BY ordinal_position;""")
-        schema = cur.fetchall()
+        info_schema = cur.fetchall()
 
         # SQL standardize and pop out `created_at` & `updated_at`
-        schema = [(sql_standardize(item['column_name']), item['data_type']) for item in schema if item['column_name'] not in ('created_at', 'updated_at')]
+        schema = [(item['column_name'], item['data_type']) for item in info_schema 
+                        if item['column_name'] not in ('created_at', 'updated_at') and item['is_generated'] == 'NEVER']
 
         # Mapping PostgreSQL data types to Python/pandas data types
         type_mapping = {
@@ -370,6 +371,15 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
                 DROP COLUMN IF EXISTS updated_at;
             """
         )
+
+        # Drops auto-generated columns
+        generated_cols = [item['column_name'] for item in info_schema if item['is_generated'] != 'NEVER']
+        if generated_cols:
+            for generated_col in generated_cols:
+                cur.execute(f"""
+                            ALTER TABLE {temp_table_name}
+                            DROP COLUMN IF EXISTS {generated_col};
+                            """)
         
         # Reads file
         pd_read_file = {
