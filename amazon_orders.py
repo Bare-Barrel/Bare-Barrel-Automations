@@ -85,12 +85,13 @@ def update_data(marketplaces=['US', 'CA', 'UK'], **kwargs):
             logger.info("No new updated orders")
             continue
 
-        # upserts orders data
-        postgresql.upsert_bulk(orders_table, orders_data, file_extension='pandas')
 
-        # gets and upserts order items data
+        # gets order items data
         order_ids = list(orders_data['amazon_order_id'].unique())
         order_items_data = get_orders_items(order_ids, marketplace)
+    
+        # upserts orders data
+        postgresql.upsert_bulk(orders_table, orders_data, file_extension='pandas')
         postgresql.upsert_bulk(order_items_table, order_items_data, file_extension='pandas')
 
 
