@@ -22,7 +22,7 @@ def get_data(marketplace='US'):
     It could could only request a snapshot of current inventory.
     """
     logger.info(f"Getting inventory for {marketplace} marketplace.")
-    inventory = Inventories(marketplace=Marketplaces[marketplace]).get_inventory_summary_marketplace(details=True)
+    inventory = Inventories(account=marketplace, marketplace=Marketplaces[marketplace]).get_inventory_summary_marketplace(details=True)
     data = pd.json_normalize(inventory.payload['inventorySummaries'], sep='_')
 
     # removing top level of column name to meet postgresql col char limit (59)
@@ -60,4 +60,4 @@ def create_table(marketplace='US', drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    update_data(marketplaces='UK')
+    update_data()

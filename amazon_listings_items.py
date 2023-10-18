@@ -58,7 +58,7 @@ def get_all_listings_items(included_data=['summaries', 'attributes', 'issues', '
 
             while True:
                 try:
-                    response = ListingsItems(marketplace=Marketplaces[marketplace]).get_listings_item(seller_id, sku, 
+                    response = ListingsItems(account=marketplace, marketplace=Marketplaces[marketplace]).get_listings_item(seller_id[marketplace], sku, 
                                                                             includedData=','.join(to_list(included_data)))
 
                     # Combies each included data set payload

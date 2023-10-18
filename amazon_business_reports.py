@@ -43,7 +43,7 @@ def request_report(start_date, end_date, marketplace='US', asin_granularity='PAR
 
     logger.info(f"Requesting Sales & Traffic Report ({marketplace}) {asin_granularity} {str(start_date)} - {str(end_date)}")
 
-    response = ReportsV2(marketplace=Marketplaces[marketplace]).create_report(
+    response = ReportsV2(account=marketplace, marketplace=Marketplaces[marketplace]).create_report(
                             reportType = ReportType.GET_SALES_AND_TRAFFIC_REPORT,
                             reportOptions = {
                                             "dateGranularity": date_granularity,
@@ -189,11 +189,11 @@ def create_table(asin_granularity, drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    # update_data('PARENT')
+    # update_data('PARENT') 
     # update_data('CHILD')
 
     # Create a date range
-    start_date = dt.date(2023, 1, 1)
+    start_date = dt.date(2023, 7, 1)
     end_date = dt.date.today() - dt.timedelta(days=2)
     date_range = pd.date_range(start_date, end_date)
 
@@ -201,9 +201,10 @@ if __name__ == '__main__':
     unique_months = date_range.to_period('M').unique()
     
     tasks = []
-    for marketplace in ['CA']:
+    for marketplace in ['UK']:
         for month in unique_months:
             start_of_month = month.to_timestamp(how='start')
             end_of_month = month.to_timestamp(how='end')
             logger.info(f"Updating for {start_of_month} - {end_of_month}")
-            update_data('CHILD', marketplace, start_date=start_of_month, end_date=end_of_month)
+            update_data('PARENT', marketplace, start_date=start_of_month, end_date=end_of_month)
+            # update_data('CHILD', marketplace, start_date=start_of_month, end_date=end_of_month)

@@ -6,6 +6,7 @@ import io
 import gzip
 import time
 from ad_api.api.reports import Reports
+from ad_api.base.exceptions import AdvertisingApiTooManyRequestsException
 from ad_api.base import Marketplaces
 from utility import to_list
 import postgresql
@@ -138,9 +139,16 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
     }
     logger.info(f"Requesting {body['name']}")
     
-    response = Reports(account=marketplace, marketplace=Marketplaces[marketplace]).post_report(body=body)
-    payload = response.payload
-    return payload
+    sleep_multiplier = 1
+    while True:
+        try:
+            response = Reports(account=marketplace, marketplace=Marketplaces[marketplace]).post_report(body=body)
+            payload = response.payload
+            return payload
+        except AdvertisingApiTooManyRequestsException as e:
+            logger.error(e)
+            time.sleep(60 * sleep_multiplier)
+            sleep_multiplier += 0.05
 
 
 def download_report(report_id, root_directory, report_name):
@@ -259,7 +267,7 @@ def update_data(start_date, end_date, marketplaces=['US', 'CA', 'UK']):
                     response = request_report(ad_product, report_type_id, group_by, 
                                                 start_date, end_date, marketplace=marketplace)
                     report_ids[response['name']] = response['reportId']
-                    time.sleep(1)
+                    time.sleep(10)
     
     # download reports
     gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')

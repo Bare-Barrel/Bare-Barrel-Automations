@@ -12,6 +12,7 @@ import re
 import io
 import csv
 import requests
+from requests.exceptions import ConnectionError
 import postgresql
 import logging
 import logger_setup
@@ -105,13 +106,19 @@ def request_report(ad_product, report_type, report_date, marketplace='US'):
         'SPONSORED_BRANDS': sb_Reports,
         'SPONSORED_DISPLAY': sd_Reports
     }
-    Reports = reports[ad_product](account=marketplace, marketplace=Marketplaces[marketplace])
 
-    response = Reports.post_report(recordType=report_type, body=json.dumps(body))
-    payload = response.payload
-    return payload
+    sleep_multiplier = 1
+    while True:
+        try:
+            Reports = reports[ad_product](account=marketplace, marketplace=Marketplaces[marketplace])
+            response = Reports.post_report(recordType=report_type, body=json.dumps(body))
+            payload = response.payload
+            return payload
 
-
+        except ConnectionError as e:
+            logger.error(e)
+            time.sleep(2 * sleep_multiplier)
+            sleep_multiplier += 0.10
 
 
 def download_report(report_id, ad_product, marketplace='US', directory='', report_name=''):

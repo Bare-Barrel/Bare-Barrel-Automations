@@ -3,7 +3,7 @@ from sp_api.base import Marketplaces
 from sp_api.api import Orders
 from sp_api.util import throttle_retry, load_all_pages
 from sp_api.base.exceptions import SellingApiRequestThrottledException, SellingApiServerException
-from requests.exceptions import ReadTimeout
+from requests.exceptions import ReadTimeout, ConnectionError
 from utility import to_list
 import postgresql
 import time
@@ -23,7 +23,7 @@ def load_all_orders(marketplace='US', **kwargs):
     """
     a generator function to return all pages, obtained by NextToken
     """
-    return Orders(marketplace=Marketplaces[marketplace]).get_orders(**kwargs)
+    return Orders(account=marketplace, marketplace=Marketplaces[marketplace]).get_orders(**kwargs)
 
 
 def get_orders_items(order_ids=[], marketplace='US'):
@@ -38,7 +38,7 @@ def get_orders_items(order_ids=[], marketplace='US'):
 
             try:
                 logger.info(f"Getting Order ID: {order_id}")
-                order_items = Orders(marketplace=Marketplaces[marketplace]).get_order_items(order_id)
+                order_items = Orders(account=marketplace, marketplace=Marketplaces[marketplace]).get_order_items(order_id)
                 data = order_items.payload.get('OrderItems')
                 data = pd.json_normalize(data, sep='_')
                 data['amazon_order_id'] = order_id
@@ -47,7 +47,7 @@ def get_orders_items(order_ids=[], marketplace='US'):
                 time.sleep(1)
                 break
 
-            except (SellingApiRequestThrottledException, SellingApiServerException, ReadTimeout) as error:
+            except (SellingApiRequestThrottledException, SellingApiServerException, ReadTimeout, ConnectionError) as error:
                 logger.error(error)
                 time.sleep(5)
 
@@ -70,8 +70,8 @@ def update_data(marketplaces=['US', 'CA', 'UK'], **kwargs):
 
         orders_data = pd.DataFrame()
         total_orders = 0
-
-        for page in load_all_orders(marketplace, LastUpdatedAfter=last_update_date.isoformat(), **kwargs):    # datetime.utcnow() - timedelta(days=290)).isoformat()
+  
+        for page in load_all_orders(marketplace, **kwargs):    # datetime.utcnow() - timedelta(days=290)).isoformat()
 
                 orders_payload = page.payload.get('Orders')
                 data = pd.json_normalize(orders_payload, sep='_')
@@ -85,6 +85,7 @@ def update_data(marketplaces=['US', 'CA', 'UK'], **kwargs):
             logger.info("No new updated orders")
             continue
 
+        orders_data.columns = [postgresql.sql_standardize(col) for col in orders_data.columns]
 
         # gets order items data
         order_ids = list(orders_data['amazon_order_id'].unique())
@@ -146,5 +147,5 @@ def update_missing_order_items(marketplaces=['US', 'CA', 'UK']):
 
 
 if __name__ == '__main__':
-    update_data()
+    update_data(CreatedAfter=dt.date(2023,9,20).isoformat())
     update_missing_order_items()

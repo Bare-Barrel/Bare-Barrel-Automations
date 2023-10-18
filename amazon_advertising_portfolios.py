@@ -74,6 +74,4 @@ def create_table(drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    # list_portfolios(marketplace)
-    # create_table(drop_table_if_exists=True)
     update_data()
