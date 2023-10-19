@@ -147,5 +147,5 @@ def update_missing_order_items(marketplaces=['US', 'CA', 'UK']):
 
 
 if __name__ == '__main__':
-    update_data(CreatedAfter=dt.date(2023,9,20).isoformat())
+    update_data()
     update_missing_order_items()

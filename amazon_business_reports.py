@@ -59,13 +59,14 @@ def request_report(start_date, end_date, marketplace='US', asin_granularity='PAR
     return report_id
 
 
-def get_report(report_id):
+def get_report(report_id, marketplace):
     """
     Checks and waits for the report status to be downloaded.
 
     Returns document_id (str)
     """
-    result = ReportsV2().get_report(report_id)
+    result = ReportsV2(account=marketplace, 
+                    marketplace=Marketplaces[marketplace]).get_report(report_id)
     payload = result.payload
     status = payload['processingStatus']
     logger.info(f"Report Processing Status: {status}")
@@ -79,14 +80,15 @@ def get_report(report_id):
     return get_report(report_id)
 
 
-def download_report(document_id):
+def download_report(document_id, marketplace):
     """
     Download and decompresses zipped report to memory.
 
     Returns data (json)
     """
     try:
-        response = ReportsV2().get_report_document(document_id)
+        response = ReportsV2(account=marketplace, 
+                    marketplace=Marketplaces[marketplace]).get_report_document(document_id)
         url = response.payload['url']
         response = requests.get(url)
 
@@ -109,7 +111,7 @@ def download_report(document_id):
         time.sleep(30)
 
         # Retries
-        return download_report(document_id)
+        return download_report(document_id, marketplace)
 
 
 
@@ -139,7 +141,7 @@ def download_combine_reports(start_date, end_date, marketplace, asin_granularity
             report_id = request_report(current_date, current_date, marketplace, asin_granularity)
             report_ids[current_date] = report_id
             current_date += dt.timedelta(days=1)
-            time.sleep(5)
+            time.sleep(10)
 
         except Exception as error:
             logger.warning(f"Error: {error}")
@@ -149,8 +151,8 @@ def download_combine_reports(start_date, end_date, marketplace, asin_granularity
     combined_data = pd.DataFrame()
     for date in report_ids:
         report_id = report_ids[date]
-        document_id = get_report(report_id)
-        data = download_report(document_id)
+        document_id = get_report(report_id, marketplace)
+        data = download_report(document_id, marketplace)
 
         # Combines data
         df = pd.json_normalize(data, sep='_')
@@ -189,22 +191,21 @@ def create_table(asin_granularity, drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    # update_data('PARENT') 
-    # update_data('CHILD')
+    update_data('PARENT',  'UK') 
+    update_data('CHILD', 'UK')
 
-    # Create a date range
-    start_date = dt.date(2023, 7, 1)
-    end_date = dt.date.today() - dt.timedelta(days=2)
-    date_range = pd.date_range(start_date, end_date)
+    # # Create a date range
+    # start_date = dt.date(2023, 9, 1)
+    # end_date = dt.date.today() - dt.timedelta(days=2)
+    # date_range = pd.date_range(start_date, end_date)
 
-    # Find unique months in the date range
-    unique_months = date_range.to_period('M').unique()
+    # # Find unique months in the date range
+    # unique_months = date_range.to_period('M').unique()
     
-    tasks = []
-    for marketplace in ['UK']:
-        for month in unique_months:
-            start_of_month = month.to_timestamp(how='start')
-            end_of_month = month.to_timestamp(how='end')
-            logger.info(f"Updating for {start_of_month} - {end_of_month}")
-            update_data('PARENT', marketplace, start_date=start_of_month, end_date=end_of_month)
-            # update_data('CHILD', marketplace, start_date=start_of_month, end_date=end_of_month)
+    # for marketplace in ['UK']:
+    #     for month in unique_months:
+    #         start_of_month = month.to_timestamp(how='start')
+    #         end_of_month = month.to_timestamp(how='end')
+    #         logger.info(f"Updating for {start_of_month} - {end_of_month}")
+    #         update_data('PARENT', marketplace, start_date=start_of_month, end_date=end_of_month)
+    #         update_data('CHILD', marketplace, start_date=start_of_month, end_date=end_of_month)
