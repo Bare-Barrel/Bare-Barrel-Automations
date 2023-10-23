@@ -191,8 +191,8 @@ def create_table(asin_granularity, drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    update_data('PARENT',  'UK') 
-    update_data('CHILD', 'UK')
+    update_data('PARENT') 
+    update_data('CHILD')
 
     # # Create a date range
     # start_date = dt.date(2023, 9, 1)
