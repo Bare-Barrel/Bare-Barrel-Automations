@@ -64,22 +64,21 @@ def update_data(marketplaces=['US', 'CA', 'UK'], **kwargs):
         # gets latest orders
         with postgresql.setup_cursor() as cur:
             cur.execute(f"SELECT MAX(last_update_date)::TIMESTAMP FROM {orders_table} WHERE marketplace = '{marketplace}';")
-            last_update_date = cur.fetchone()['max']
+            last_update_date = cur.fetchone()['max'].isoformat()
             if not last_update_date:
                 last_update_date = dt.date(2022,1,1)
 
         orders_data = pd.DataFrame()
         total_orders = 0
   
-        for page in load_all_orders(marketplace, **kwargs):    # datetime.utcnow() - timedelta(days=290)).isoformat()
-
-                orders_payload = page.payload.get('Orders')
-                data = pd.json_normalize(orders_payload, sep='_')
-                data['marketplace'] = marketplace
-                orders_data = pd.concat([orders_data, data], ignore_index=True)
-                total_orders += len(orders_payload)
-                logger.info(f"\t{total_orders} orders processed")
-                time.sleep(10)
+        for page in load_all_orders(marketplace, LastUpdatedAfter=last_update_date, **kwargs):    # datetime.utcnow() - timedelta(days=290)).isoformat()
+            orders_payload = page.payload.get('Orders')
+            data = pd.json_normalize(orders_payload, sep='_')
+            data['marketplace'] = marketplace
+            orders_data = pd.concat([orders_data, data], ignore_index=True)
+            total_orders += len(orders_payload)
+            logger.info(f"\t{total_orders} orders processed")
+            time.sleep(10)
 
         if orders_data.empty:
             logger.info("No new updated orders")

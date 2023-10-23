@@ -467,7 +467,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
                         FROM information_schema.table_constraints
                         WHERE table_schema || '.' || table_name = %s
                         AND constraint_type = 'PRIMARY KEY';""", (table_name,))
-        primary_key_constraint_name = cur.fetchone()['constraint_name']
+        primary_key_constraint_name = cur.fetchone()
 
         # Inserts copied data from the temporary table to the final table
         # updating existing values at each new conflict
@@ -476,7 +476,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             INSERT INTO {table_name}({', '.join(data.columns)})
             SELECT * FROM {temp_table_name}
             {
-                f"ON CONFLICT ON CONSTRAINT {primary_key_constraint_name} DO UPDATE SET {update_set};" 
+                f"ON CONFLICT ON CONSTRAINT {primary_key_constraint_name['constraint_name']} DO UPDATE SET {update_set};" 
                 if primary_key_constraint_name else ";"
             }
             """
