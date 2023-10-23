@@ -63,7 +63,7 @@ def get_data(table_name, marketplaces=['US', 'CA', 'UK'], **kwargs):
 
 
 def update_data(table_names=table_names.keys(), marketplaces=['US', 'CA', 'UK'], **kwargs):
-    for table_name in to_list(table_names):
+    for table_name in table_names:
         data = get_data(table_name, marketplaces, **kwargs)
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
