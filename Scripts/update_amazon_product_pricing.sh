@@ -10,7 +10,7 @@ source $Automations/gcp_env/bin/activate
 cd $Automations
 
 # Run the Python script
-python amazon_advertising_reports.py
+python amazon_product_pricing.py
 
 # Deactivate the virtual environment
 deactivate

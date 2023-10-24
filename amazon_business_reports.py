@@ -77,7 +77,7 @@ def get_report(report_id, marketplace):
             return document_id
 
     time.sleep(15)
-    return get_report(report_id)
+    return get_report(report_id, marketplace)
 
 
 def download_report(document_id, marketplace):
