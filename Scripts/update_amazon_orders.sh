@@ -11,6 +11,5 @@ cd $Automations
 
 # Run the Python script
 python amazon_orders.py
-
 # Deactivate the virtual environment
 deactivate
