@@ -56,7 +56,7 @@ def update_data(marketplaces=['US', 'CA', 'UK']):
 
 
 def create_table(marketplace='US', drop_table_if_exists=False):
-    data = get_data(marketplace)
+    data = get_data(marketplace, details=True)
 
     with postgresql.setup_cursor() as cur:
 
