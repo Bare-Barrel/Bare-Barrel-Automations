@@ -16,36 +16,55 @@ logger = logging.getLogger(__name__)
 
 table_name = 'inventory.fba'
 
-def get_data(marketplace='US'):
+@throttle_retry()
+@load_all_pages(next_token_param='nextToken')
+def load_all_inventories(marketplace='US', **kwargs):
+    """
+    a generator function to return all pages, obtained by NextToken
+    """
+    return Inventories(account=marketplace, marketplace=Marketplaces[marketplace]).get_inventory_summary_marketplace(**kwargs)
+
+
+def get_data(marketplace='US', **kwargs):
     """
     Requests inventory data and returns a pandas dataframe.
     It could could only request a snapshot of current inventory.
     """
     logger.info(f"Getting inventory for {marketplace} marketplace.")
-    inventory = Inventories(account=marketplace, marketplace=Marketplaces[marketplace]).get_inventory_summary_marketplace(details=True)
-    data = pd.json_normalize(inventory.payload['inventorySummaries'], sep='_')
+
+    combined_data = pd.DataFrame()
+
+    for inventory in load_all_inventories(marketplace, **kwargs):
+        print(inventory.payload)
+        data = pd.json_normalize(inventory.payload['inventorySummaries'], sep='_')
+        combined_data = pd.concat([combined_data, data], ignore_index=True)
 
     # removing top level of column name to meet postgresql col char limit (59)
-    data.columns = data.columns.str.replace(f'{"inventoryDetails"}_', '', regex=False)
+    combined_data.columns = data.columns.str.replace(f'{"inventoryDetails"}_', '', regex=False)
 
     # manually adding marketplace and date
-    data['marketplace'] = marketplace
-    data['date'] = dt.datetime.now(pytz.timezone('UTC')).date()
-    return data
+    combined_data['marketplace'] = marketplace
+    combined_data['date'] = dt.datetime.now(pytz.timezone('UTC')).date()
+
+    return combined_data
 
 
 def update_data(marketplaces=['US', 'CA', 'UK']):
     for marketplace in to_list(marketplaces):
-        data = get_data(marketplace)
+        data = get_data(marketplace, details=True)
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 
 def create_table(marketplace='US', drop_table_if_exists=False):
     data = get_data(marketplace)
-    with postgresql.setup_cursor() as cur:        
+
+    with postgresql.setup_cursor() as cur:
+
         if drop_table_if_exists:
             cur.execute(f"DROP TABLE IF EXISTS {table_name}")
+
         logger.info(f"Creating table {table_name}")
+
         postgresql.create_table(cur, file_path=data, file_extension='pandas', table_name=table_name,
                                 keys="PRIMARY KEY (date, marketplace, asin)")
 
