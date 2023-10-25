@@ -67,7 +67,7 @@ def get_listings_prime_prices(customer_type='Consumer', marketplace='US'):
     # Gets active listing asins
     with postgresql.setup_cursor() as cur:
         cur.execute(f"""SELECT asin FROM listings_items.summaries
-                    WHERE status @> ARRAY['DISCOVERABLE', 'BUYABLE']
+                    WHERE status @> ARRAY['DISCOVERABLE']
                     AND marketplace = '{marketplace}'
                     AND date = (select max(date) from listings_items.summaries
                                 where marketplace = '{marketplace}');""")
