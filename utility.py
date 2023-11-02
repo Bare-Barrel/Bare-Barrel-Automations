@@ -75,6 +75,14 @@ def payload_to_dataframe(response, get_key):
 def reposition_columns(df, col_positions={}):
     """
     Repositions column names of a pandas df.
+
+    Args:
+        df (pd.DataFrame)
+        col_position (dict): {col_name: col_position}
+            e.g.: {'date': 0, 'marketplace': 1}
+    
+    Returns:
+        df (pd.DataFrame)
     """
     cols = [col for col in df.columns if col not in col_positions]
 
