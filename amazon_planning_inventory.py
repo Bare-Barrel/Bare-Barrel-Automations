@@ -61,7 +61,7 @@ def download_combine_reports(marketplaces=['US', 'CA', 'UK']):
 
         # Reads data to dataframe
         data = pd.read_csv(StringIO('\n'.join(data_lines)), delimiter='\t')
-        data.insert(0, 'marketplace', marketplace)
+        data = reposition_columns(data, {'marketplace': 0})
         combined_data = pd.concat([combined_data, data], ignore_index=True)
 
     return combined_data
