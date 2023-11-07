@@ -8,6 +8,7 @@ import time
 from ad_api.api.reports import Reports
 from ad_api.base.exceptions import AdvertisingApiTooManyRequestsException
 from ad_api.base import Marketplaces
+from amazon_advertising_report_types_v3 import table_names, metrics
 from utility import to_list
 import postgresql
 import re
@@ -18,77 +19,6 @@ import logger_setup
 
 logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
-
-table_names = {
-        "SPONSORED_PRODUCTS": {
-            "spCampaigns": {
-                "['campaign']": "campaign",
-                "['adGroup']":  "adgroup", #(useless?)
-                # "['campaignPlacement']": "placement", # USELESS no pkey (campaignId/adgroupId)
-                "['campaign', 'adGroup']": "campaign_adgroup",
-                "['campaign', 'campaignPlacement']": "campaign_placement",
-                # "['adGroup', 'campaignPlacement']": "adgroup_placement", # can't add adgroup additional metrics (==campaign_placement)
-                # "['campaign', 'adGroup', 'campaignPlacement']": "campaign_adgroup_placement", # cannot add adgroup additional metrics (==campaign_placement)
-            },
-            "spTargeting": {
-                "['targeting']": "targeting"
-            },
-            "spSearchTerm": {
-                "['searchTerm']": "search_term"
-            },
-            "spAdvertisedProduct": {
-                "['advertiser']": "advertised_product"
-            },
-            "spPurchasedProduct": {
-                "['asin']": "purchased_product"
-            },
-            },
-        "SPONSORED_BRANDS": {
-            "sbPurchasedProduct": {
-                "['purchasedAsin']": "purchased_product"
-            }
-        }
-}
-
-# Sponsored ads (version 3) group by metrics
-campaign_base_metrics = 'impressions, clicks, cost, purchases1d, purchases7d, purchases14d, purchases30d, purchasesSameSku1d, purchasesSameSku7d, purchasesSameSku14d, purchasesSameSku30d, unitsSoldClicks1d, unitsSoldClicks7d, unitsSoldClicks14d, unitsSoldClicks30d, sales1d, sales7d, sales14d, sales30d, attributedSalesSameSku1d, attributedSalesSameSku7d, attributedSalesSameSku14d, attributedSalesSameSku30d, unitsSoldSameSku1d, unitsSoldSameSku7d, unitsSoldSameSku14d, unitsSoldSameSku30d, kindleEditionNormalizedPagesRead14d, kindleEditionNormalizedPagesRoyalties14d, date, startDate, endDate, campaignBiddingStrategy, costPerClick, clickThroughRate, spend'
-campaign_addtl_metrics = 'campaignName, campaignId, campaignStatus, campaignBudgetAmount, campaignBudgetType, campaignRuleBasedBudgetAmount, campaignApplicableBudgetRuleId, campaignApplicableBudgetRuleName, campaignBudgetCurrencyCode, topOfSearchImpressionShare'
-adGroup_addtl_metrics = 'adGroupName, adGroupId, adStatus'
-campaignPlacement_addtl_metrics = 'placementClassification'
-targeting_base_metrics = 'impressions, clicks, costPerClick, clickThroughRate, cost, purchases1d, purchases7d, purchases14d, purchases30d, purchasesSameSku1d, purchasesSameSku7d, purchasesSameSku14d, purchasesSameSku30d, unitsSoldClicks1d, unitsSoldClicks7d, unitsSoldClicks14d, unitsSoldClicks30d, sales1d, sales7d, sales14d, sales30d, attributedSalesSameSku1d, attributedSalesSameSku7d, attributedSalesSameSku14d, attributedSalesSameSku30d, unitsSoldSameSku1d, unitsSoldSameSku7d, unitsSoldSameSku14d, unitsSoldSameSku30d, kindleEditionNormalizedPagesRead14d, kindleEditionNormalizedPagesRoyalties14d, salesOtherSku7d, unitsSoldOtherSku7d, acosClicks7d, acosClicks14d, roasClicks7d, roasClicks14d, keywordId, keyword, campaignBudgetCurrencyCode, date, startDate, endDate, portfolioId, campaignName, campaignId, campaignBudgetType, campaignBudgetAmount, campaignStatus, keywordBid, adGroupName, adGroupId, keywordType, matchType, targeting, topOfSearchImpressionShare'
-targeting_addtl_metrics = 'adKeywordStatus'
-searchTerm_base_metrics = 'impressions, clicks, costPerClick, clickThroughRate, cost, purchases1d, purchases7d, purchases14d, purchases30d, purchasesSameSku1d, purchasesSameSku7d, purchasesSameSku14d, purchasesSameSku30d, unitsSoldClicks1d, unitsSoldClicks7d, unitsSoldClicks14d, unitsSoldClicks30d, sales1d, sales7d, sales14d, sales30d, attributedSalesSameSku1d, attributedSalesSameSku7d, attributedSalesSameSku14d, attributedSalesSameSku30d, unitsSoldSameSku1d, unitsSoldSameSku7d, unitsSoldSameSku14d, unitsSoldSameSku30d, kindleEditionNormalizedPagesRead14d, kindleEditionNormalizedPagesRoyalties14d, salesOtherSku7d, unitsSoldOtherSku7d, acosClicks7d, acosClicks14d, roasClicks7d, roasClicks14d, keywordId, keyword, campaignBudgetCurrencyCode, date, startDate, endDate, portfolioId, searchTerm, campaignName, campaignId, campaignBudgetType, campaignBudgetAmount, campaignStatus, keywordBid, adGroupName, adGroupId, keywordType, matchType, targeting, adKeywordStatus'
-advertiser_base_metrics = 'date, startDate, endDate, campaignName, campaignId, adGroupName, adGroupId, adId, portfolioId, impressions, clicks, costPerClick, clickThroughRate, cost, spend, campaignBudgetCurrencyCode, campaignBudgetAmount, campaignBudgetType, campaignStatus, advertisedAsin, advertisedSku, purchases1d, purchases7d, purchases14d, purchases30d, purchasesSameSku1d, purchasesSameSku7d, purchasesSameSku14d, purchasesSameSku30d, unitsSoldClicks1d, unitsSoldClicks7d, unitsSoldClicks14d, unitsSoldClicks30d, sales1d, sales7d, sales14d, sales30d, attributedSalesSameSku1d, attributedSalesSameSku7d, attributedSalesSameSku14d, attributedSalesSameSku30d, salesOtherSku7d, unitsSoldSameSku1d, unitsSoldSameSku7d, unitsSoldSameSku14d, unitsSoldSameSku30d, unitsSoldOtherSku7d, kindleEditionNormalizedPagesRead14d, kindleEditionNormalizedPagesRoyalties14d, acosClicks7d, acosClicks14d, roasClicks7d, roasClicks14d'
-asin_base_metrics = 'date, startDate, endDate, portfolioId, campaignName, campaignId, adGroupName, adGroupId, keywordId, keyword, keywordType, advertisedAsin, purchasedAsin, advertisedSku, campaignBudgetCurrencyCode, matchType, unitsSoldClicks1d, unitsSoldClicks7d, unitsSoldClicks14d, unitsSoldClicks30d, sales1d, sales7d, sales14d, sales30d, purchases1d, purchases7d, purchases14d, purchases30d, unitsSoldOtherSku1d, unitsSoldOtherSku7d, unitsSoldOtherSku14d, unitsSoldOtherSku30d, salesOtherSku1d, salesOtherSku7d, salesOtherSku14d, salesOtherSku30d, purchasesOtherSku1d, purchasesOtherSku7d, purchasesOtherSku14d, purchasesOtherSku30d, kindleEditionNormalizedPagesRead14d, kindleEditionNormalizedPagesRoyalties14d'
-purchasedAsin_base_metrics = 'campaignId, adGroupId, date, startDate, endDate, campaignBudgetCurrencyCode, campaignName, adGroupName, attributionType, purchasedAsin, productName, productCategory, sales14d, orders14d, unitsSold14d, newToBrandSales14d, newToBrandPurchases14d, newToBrandUnitsSold14d, newToBrandSalesPercentage14d, newToBrandPurchasesPercentage14d, newToBrandUnitsSoldPercentage14d'
-
-
-metrics = {
-    # Sponsored Products (version 3)
-    'SPONSORED_PRODUCTS': {
-        "['campaign']": f'{campaign_addtl_metrics}, {campaign_base_metrics}',
-        "['adGroup']": f'{adGroup_addtl_metrics}, {campaign_base_metrics}',
-        "['campaign', 'adGroup']": f'{campaign_addtl_metrics}, {adGroup_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '),
-        "['campaignPlacement']": f'{campaignPlacement_addtl_metrics}, {campaign_base_metrics}',     # useless? No campaignIds/adGroupIds
-        "['campaign', 'campaignPlacement']": f'{campaign_addtl_metrics}, {campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '),
-        "['adGroup', 'campaignPlacement']": f'{campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '), # can't add adGroup addt'l metrics == campaignPlacement
-        "['campaign', 'adGroup', 'campaignPlacement']": f'{campaign_addtl_metrics}, {campaignPlacement_addtl_metrics}, {campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '), # Can't add adGrouop add'tl metrics; == campaign, campaignPlacement
-        "['targeting']": f'{targeting_base_metrics}, {targeting_addtl_metrics}',
-        "['searchTerm']": searchTerm_base_metrics,
-        "['advertiser']": advertiser_base_metrics,
-        "['asin']": asin_base_metrics
-    },
-    # Sponsored Brands Video (version 3)
-    'SPONSORED_BRANDS': {
-        "['purchasedAsin']": purchasedAsin_base_metrics
-    }
-}
-
-
-filters = {
-    'spSearchTerm': ['TARGETING_EXPRESSION', 'TARGETING_EXPRESSION_PREDEFINED'],
-    'spPurchasedProduct': ['BROAD', 'PHRASE', 'EXACT', 'TARGETING_EXPRESSION', 'TARGETING_EXPRESSION_PREDEFINED']
-}
 
 
 def request_report(ad_product, report_type_id, group_by, start_date, end_date, time_unit='DAILY', marketplace='US'):
