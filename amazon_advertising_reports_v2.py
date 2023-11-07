@@ -22,24 +22,24 @@ logger = logging.getLogger(__name__)
 
 table_names = {
         'SPONSORED_BRANDS': {
-            'campaigns': 'campaign',
-            'campaigns - placement': 'campaign_placement',
-            'adGroups': 'adgroup',
-            'targets': 'targeting',
-            'keywords': 'keyword',
-            'keywords - query': 'search_term',
-            'ads': 'ad',
+            'campaigns': 'campaign_v2',
+            'campaigns - placement': 'campaign_placement_v2',
+            'adGroups': 'adgroup_v2',
+            'targets': 'targeting_v2',
+            'keywords': 'keyword_v2',
+            'keywords - query': 'search_term_v2',
+            'ads': 'ad_v2',
         },
 
         'SPONSORED_DISPLAY': {
-            'campaigns': 'campaign',
-            'adGroups': 'adgroup',
-            'productAds': 'advertised_product',
-            'targets': 'targeting',
+            'campaigns': 'campaign_v2',
+            'adGroups': 'adgroup_v2',
+            'productAds': 'advertised_product_v2',
+            'targets': 'targeting_v2',
             # 'asins': 'purchased_product', # broken
-            'campaigns - matchedTarget': 'matched_target_campaign',
-            'adGroups - matchedTarget': 'matched_target_adgroup',
-            'targets - matchedTarget': 'matched_target_targeting'
+            'campaigns - matchedTarget': 'matched_target_campaign_v2',
+            'adGroups - matchedTarget': 'matched_target_adgroup_v2',
+            'targets - matchedTarget': 'matched_target_targeting_v2'
         }
 }
 
