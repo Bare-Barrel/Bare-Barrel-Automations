@@ -259,7 +259,6 @@ def create_table(directory, drop_table_if_exists=False):
     Upserts data by default.
     IMPORTANT!: Overlapping data may result to Primary Key error.
     """
-
     # regrexing table name
     match = re.search(r'(SPONSORED_\w*)/(.+)', str(directory))
     ad_product, report_type = match[1], match[2]
