@@ -179,7 +179,42 @@ def combine_data(directory=None, file_paths=[], file_extension='.json.gz'):
     return combined_data
 
 
-def update_data(start_date, end_date, marketplaces=['US', 'CA', 'UK']):
+def update_data(ad_product, report_type_id, start_date, end_date, marketplaces=['US', 'CA', 'UK']):
+    """
+    Adds upsert data step to request_download_reports by
+    combining the downloaded files
+    """
+    report_ids = {}
+
+    # requests reports
+    for group_by in table_names[ad_product][report_type_id]:
+
+        for marketplace in to_list(marketplaces):
+            response = request_report(ad_product, report_type_id, group_by, 
+                                        start_date, end_date, marketplace=marketplace)
+            report_ids[response['name']] = response['reportId']
+            time.sleep(10)
+    
+    # download reports
+    gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
+
+    for report_name in report_ids:        
+        file_path = download_report(report_ids[report_name], gzipped_directory, report_name)
+
+        # regrexing table name
+        match = re.search(r'(SPONSORED_\w+)\s\((\w*)\)\s(\w+)\s(\[.+\])', report_name)
+        ad_product, marketplace, report_type_id, group_by = match[1], match[2], match[3], match[4]
+        table_name = table_names[ad_product][report_type_id][group_by]
+        table_name = f"{ad_product.lower()}.{table_name}"
+        # manually ads marketplace
+        data = pd.read_json(file_path)
+        data['marketplace'] = marketplace
+
+        # upserts data
+        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+
+
+def update_all_data(start_date, end_date, marketplaces=['US', 'CA', 'UK']):
     """
     Download all reports & upserts to database.
     It can only update up to 31 days at a time.
@@ -253,5 +288,26 @@ def create_table(directory, drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    start_date, end_date = dt.date.today() - dt.timedelta(days=31), dt.date.today()
-    update_data(start_date, end_date)
+    datetime_now = dt.datetime.now()
+    day = datetime_now.day
+    hour = datetime_now.hour
+    # Updates 60 days at the start of the month
+    if day == 1 and hour == 1:
+        logger.info("-UPDATING SP LAST 60 DAYS-")
+        start_date, end_date = dt.date.today() - dt.timedelta(days=60), dt.date.today()
+        update_all_data(start_date, end_date)
+    # Updates last 2 weeks at the middle of the month
+    elif day == 15 and hour == 1:
+        logger.info("-UPDATING SP LAST 15 DAYS-")
+        start_date, end_date = dt.date.today() - dt.timedelta(days=15), dt.date.today()
+        update_all_data(start_date, end_date)
+    # Updates last 7 days daily
+    elif day not in (1, 15) and hour == 1:
+        logger.info("-UPDATING SP LAST 7 DAYS-")
+        start_date, end_date = dt.date.today() - dt.timedelta(days=7), dt.date.today()
+        update_all_data(start_date, end_date)
+    # Updates `targeting` every hour
+    elif day not in (1, 15) and hour != 1:
+        logger.info("-UPDATING SP Targeting LAST 2 DAYS-")
+        start_date, end_date = dt.date.today() - dt.timedelta(days=1), dt.date.today()
+        update_data('SPONSORED_PRODUCTS', 'spTargeting', start_date, end_date)

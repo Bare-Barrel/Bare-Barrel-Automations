@@ -16,37 +16,37 @@ logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
 
-def request_report(start_date, end_date, marketplace='US', report_options={}):
+def request_report(report_type, marketplace, start_date=None, end_date=None, **kwargs):
     """
-    Requests a `Detail Page Sales and Traffic` report found in business reports in seller central.
-    The report provides two granularity reports salesAndTrafficByDate and [salesAndTrafficByAsin, salesAndTrafficByParent, salesAndTrafficByChild].
-    Therefore, it needed to be downloaded one day at a time to get the daily metrics at the asin granularity level.
+    Requests any type of report found in 
+    https://developer-docs.amazon.com/sp-api/docs/sp-api-seller-use-cases#fulfillment-by-amazon-fba
 
     Args:
+        report_type (sp_api.base.reportTypes): ReportType
         start_date, end_date (str | dt.date): YYYY-MM-DD
         marketplace (str): 'US', 'CA', 'UK'
-        asin_granularity (str): PARENT, CHILD, ASIN
-        date_granularity (str): DAY, WEEK, MONTH
+        **kwargs = reportOptions
 
     Returns:
-        data (pd.DataFrame): 
+        report_id (str)
     """
     if isinstance(start_date, str):
         start_date = dt.datetime.strptime(start_date, '%Y-%m-%d')
         end_date   = dt.datetime.strptime(end_date, '%Y-%m-%d')
 
     # Sets start date (00:00:00) and end date (23:59:59)
-    start_date = dt.datetime.combine(start_date, dt.time.min)
-    end_date = dt.datetime.combine(end_date, dt.time.max)
+    if start_date and end_date:
+        start_date = dt.datetime.combine(start_date, dt.time.min).isoformat()
+        end_date = dt.datetime.combine(end_date, dt.time.max).isoformat()
 
-    logger.info(f"Requesting Sales & Traffic Report ({marketplace}) {asin_granularity} {str(start_date)} - {str(end_date)}")
+    logger.info(f"Requesting {report_type} ({marketplace}) {f'{start_date} - {end_date}' if start_date else ''}")
 
     response = ReportsV2(account=marketplace, marketplace=Marketplaces[marketplace]).create_report(
-                            reportType = ReportType.GET_SALES_AND_TRAFFIC_REPORT,
-                            reportOptions = report_options
-                            # optionally, you can set a start and end time for your report
-                            dataStartTime = start_date.isoformat(),
-                            dataEndTime = end_date.isoformat()
+                            reportType = report_type,
+                            reportOptions = kwargs,
+                            # optionally, you can set a start and end time for some reports
+                            dataStartTime = start_date,
+                            dataEndTime = end_date
     )
 
     report_id = response.payload['reportId']
@@ -77,9 +77,9 @@ def get_report(report_id, marketplace):
 
 def download_report(document_id, marketplace):
     """
-    Download and decompresses zipped report to memory.
+    Downloads the url from the `get_report` function into memory without saving the file.
 
-    Returns data (json)
+    Returns response.content
     """
     try:
         response = ReportsV2(account=marketplace, 
@@ -89,100 +89,16 @@ def download_report(document_id, marketplace):
 
         if response.status_code == 200:
             logger.info("\tFile downloaded successfully.")
-            compressed_data = response.content
 
-            # Decompresses data
-            decompressed_data = gzip.decompress(compressed_data).decode('utf-8')
-
-            # Parse salesAndTrafficByAsin
-            data = json.loads(decompressed_data)['salesAndTrafficByAsin'] # list of dicts
-
-            return data
+            return response.content
 
         time.sleep(1)
 
+    # Retries
     except Exception as error:
         logger.warning(f"Error {error}")
         time.sleep(30)
-
-        # Retries
         return download_report(document_id, marketplace)
-
-
-
-def download_combine_reports(start_date, end_date, marketplace, asin_granularity):
-    """
-    Requests and downloads daily reports. Parsed the zipped json file. 
-    Combines reports and returns pandas dataframe at asin granularity level.
-
-    Args:
-        start_date, end_date (str | dt.date): YYYY-MM-DD
-        marketplace (str): 'US', 'CA', 'UK'
-        asin_granularity (str): PARENT, CHILD, ASIN
-
-    Returns:
-        data (pd.DataFrame): 
-    """
-    if isinstance(start_date, str):
-        start_date = dt.datetime.strptime(start_date, '%Y-%m-%d')
-    if isinstance(end_date, str):
-        end_date   = dt.datetime.strptime(end_date, '%Y-%m-%d')
-
-    # Request reports
-    report_ids = {}
-    current_date = start_date
-    while current_date <= end_date:
-        try:
-            report_id = request_report(current_date, current_date, marketplace, asin_granularity)
-            report_ids[current_date] = report_id
-            current_date += dt.timedelta(days=1)
-            time.sleep(10)
-
-        except Exception as error:
-            logger.warning(f"Error: {error}")
-            time.sleep(60)
-
-    # Downloads & combines daily reports
-    combined_data = pd.DataFrame()
-    for date in report_ids:
-        report_id = report_ids[date]
-        document_id = get_report(report_id, marketplace)
-        data = download_report(document_id, marketplace)
-
-        # Combines data
-        df = pd.json_normalize(data, sep='_')
-        df['date'] = date
-        df['marketplace'] = marketplace
-        combined_data = pd.concat([df, combined_data], ignore_index=True)
-
-    return combined_data
-
-
-def update_data(asin_granularity='PARENT', marketplaces=['US', 'CA', 'UK'], start_date=(dt.datetime.utcnow() - dt.timedelta(days=7)), end_date=(dt.datetime.utcnow() - dt.timedelta(days=1))):
-    for marketplace in to_list(marketplaces):
-        logger.info(f"Updating data {asin_granularity} {marketplace} {start_date} - {end_date}")
-        data = download_combine_reports(start_date, end_date, marketplace, asin_granularity=asin_granularity)
-        table_name = base_table_name + f"_{asin_granularity.lower()}"
-        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
-
-
-def create_table(asin_granularity, drop_table_if_exists=False):
-    # Requests worth 30 days sample of data
-    start_date = (dt.datetime.utcnow() - dt.timedelta(days=5))
-    end_date = (dt.datetime.utcnow() - dt.timedelta(days=1))
-    data = download_combine_reports(start_date, end_date, 'US', asin_granularity=asin_granularity)
-    
-    table_name = base_table_name + f"_{asin_granularity.lower()}"
-
-    with postgresql.setup_cursor() as cur:
-        if drop_table_if_exists:
-            cur.execute(f"DROP TABLE IF EXISTS {table_name};")
-
-        postgresql.create_table(cur, data, file_extension='pandas', table_name=table_name)
-
-        postgresql.update_updated_at_trigger(cur, table_name)
-
-        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 
 if __name__ == '__main__':
