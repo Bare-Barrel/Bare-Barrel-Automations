@@ -44,7 +44,7 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
     """
     # Selects date columns as per time unit
     if time_unit == 'DAILY':
-        columns = metrics[ad_product][group_by].replace(' startDate, endDate,', '')
+        columns = metrics[ad_product][group_by].replace(' startDate,', '').replace(' endDate,', '')
     elif time_unit == 'SUMMARY':
         columns = metrics[ad_product][group_by].replace(' date,', '')
 
@@ -81,7 +81,7 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
             sleep_multiplier += 0.05
 
 
-def download_report(report_id, root_directory, report_name):
+def download_report(report_id, root_directory, report_name, marketplace):
     """
     Once you have made a successful POST call, report generation can take up to three hours.
     You can check the report generation status by using the reportId returned in the initial 
@@ -172,7 +172,7 @@ def combine_data(directory=None, file_paths=[], file_extension='.json.gz'):
 
         # manually adds marketplace and date
         match = re.search(r'\((\w*)\).+(20\d\d-\d\d-\d\d)', file_path)
-        df['marketplace'], df['date'] = match[1], match[2]
+        df.insert(1, 'marketplace', match[1])
 
         combined_data = pd.concat([df, combined_data], ignore_index=True)
 
