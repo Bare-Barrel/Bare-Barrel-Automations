@@ -56,7 +56,7 @@ def download_combine_reports(marketplaces=['US', 'CA', 'UK']):
         downloaded_data = download_report(document_id, marketplace) # bytes of the text data
 
         # Decode the bytes into a string & split string into lines
-        str_downloaded_data = downloaded_data.decode('utf-8')
+        str_downloaded_data = downloaded_data.decode('iso-8859-1')
         data_lines = str_downloaded_data.strip().split('\n')
 
         # Reads data to dataframe
