@@ -444,6 +444,9 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
         non_int_columns = [col for col, dtype in data.dtypes.items() if dtype != 'Int64']
         data[non_int_columns] = data[non_int_columns].replace(['None', 'nan', 'NaN', np.nan], ['', '', '', ''])
 
+        # Removes duplicated rows
+        data = data.drop_duplicates()
+        
         # Create an in-memory CSV
         csv_buffer = io.StringIO()
 
