@@ -433,7 +433,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             data[column_name] = data[column_name].astype(data_type)
 
         # orders columns by their ordinal position
-        ordered_columns = [col[0] for col in schema]
+        ordered_columns = [sql_standardize(col[0]) for col in schema]
         missing_new_columns = [col for col in ordered_columns if col not in data.columns]
         if missing_new_columns:
             logger.info(f"\nNew columns not in the database: {missing_new_columns}")
