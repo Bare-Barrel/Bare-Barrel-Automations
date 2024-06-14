@@ -354,7 +354,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
         converted_schema = []
         for column_name, data_type in schema:
             python_data_type = type_mapping.get(data_type, str) # str if not exists
-            converted_schema.append((column_name, python_data_type, data_type))
+            converted_schema.append((sql_standardize(column_name), python_data_type, data_type))
 
         # Create string with set of columns to be updated
         update_set = ", ".join([f"{column[0]}=EXCLUDED.{column[0]}" for column in converted_schema])
