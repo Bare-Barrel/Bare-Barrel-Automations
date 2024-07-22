@@ -8,7 +8,7 @@ import time
 from ad_api.api.reports import Reports
 from ad_api.base.exceptions import AdvertisingApiTooManyRequestsException
 from ad_api.base import Marketplaces
-from amazon_advertising_report_types_v3 import table_names, metrics
+from amazon_advertising_report_types_v3 import table_names
 from utility import to_list
 import postgresql
 import re
@@ -25,8 +25,8 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
     """
     Requests a Sponsored Products report.
     Request the creation of a performance report for all entities of a single type which have
-    performance data to report. Record types can be one of campaigns, adGroups, keywords, 
-    productAds, asins, and targets. Note that for asin reports, the report currently can not 
+    performance data to report. Record types can be one of campaigns, adGroups, keywords,
+    productAds, asins, and targets. Note that for asin reports, the report currently can not
     include metrics associated with both keywords and targets. If the targetingId value is set 
     in the request, the report filters on targets and does not return sales associated with keywords. 
     If the targetingId value is not set in the request, the report filters on keywords and does not 
@@ -42,11 +42,12 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
     Returns:
         ad_api.api.ApiResponse.payload (dict)
     """
+    metrics = table_names[ad_product][report_type_id][group_by]['metrics']
     # Selects date columns as per time unit
     if time_unit == 'DAILY':
-        columns = metrics[ad_product][group_by].replace(' startDate,', '').replace(' endDate,', '')
+        columns = metrics.replace(' startDate,', '').replace(' endDate,', '')
     elif time_unit == 'SUMMARY':
-        columns = metrics[ad_product][group_by].replace(' date,', '')
+        columns = metrics.replace(' date,', '')
 
     body = {
         "name": f"{ad_product} ({marketplace}) {report_type_id} {group_by} {start_date} - {end_date}",
@@ -101,7 +102,7 @@ def download_report(report_id, root_directory, report_name, marketplace):
     # regrexing save path
     match = re.search(r'(SPONSORED_\w+)\s\((\w*)\)\s(\w+)\s(\[.+\])', report_name)
     ad_product, marketplace, report_type_id, group_by = match[1], match[2], match[3], match[4]
-    table_name = table_names[ad_product][report_type_id][group_by]
+    table_name = table_names[ad_product][report_type_id][group_by]['table_name']
     directory = os.path.join(root_directory, ad_product, table_name, marketplace)
 
     if not os.path.exists(directory) and directory:
@@ -158,12 +159,12 @@ def combine_data(directory=None, file_paths=[], file_extension='.json.gz'):
     """
     # gets all similar file types in a directory
     if directory:
-        for dirpath, dirnames, filenames in os.walk(directory):
-            filenames = [filename for filename in filenames if file_extension in filename]
+        for root, dirs, files in os.walk(directory):
+            for filename in files:
+                if file_extension in filename:
+                    print(os.path.join(root, filename))
+                    file_paths.append(os.path.join(root, filename))
 
-        for filename in filenames:
-            file_paths.append(os.path.join(dirpath, filename))
-    
     # combines data
     combined_data = pd.DataFrame()
 
@@ -199,13 +200,15 @@ def update_data(ad_product, report_type_id, start_date, end_date, marketplaces=[
     gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
 
     for report_name in report_ids:        
-        file_path = download_report(report_ids[report_name], gzipped_directory, report_name)
-
         # regrexing table name
         match = re.search(r'(SPONSORED_\w+)\s\((\w*)\)\s(\w+)\s(\[.+\])', report_name)
         ad_product, marketplace, report_type_id, group_by = match[1], match[2], match[3], match[4]
-        table_name = table_names[ad_product][report_type_id][group_by]
+        table_name = table_names[ad_product][report_type_id][group_by]['table_name']
         table_name = f"{ad_product.lower()}.{table_name}"
+
+        # download and save
+        file_path = download_report(report_ids[report_name], gzipped_directory, report_name, marketplace)
+
         # manually ads marketplace
         data = pd.read_json(file_path)
         data['marketplace'] = marketplace
@@ -214,15 +217,17 @@ def update_data(ad_product, report_type_id, start_date, end_date, marketplaces=[
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 
-def update_all_data(start_date, end_date, marketplaces=['US', 'CA', 'UK']):
+def update_all_data(start_date, end_date, ad_products=['SPONSORED_PRODUCTS', 'SPONSORED_BRANDS'],
+                        marketplaces=['US', 'CA', 'UK']):
     """
     Download all reports & upserts to database.
     It can only update up to 31 days at a time.
+
+    Note: SD tables aren't created yet
     """
     report_ids = {}
-
     # requests reports
-    for ad_product in table_names:
+    for ad_product in to_list(ad_products):
 
         for report_type_id in table_names[ad_product]:
 
@@ -232,19 +237,21 @@ def update_all_data(start_date, end_date, marketplaces=['US', 'CA', 'UK']):
                     response = request_report(ad_product, report_type_id, group_by, 
                                                 start_date, end_date, marketplace=marketplace)
                     report_ids[response['name']] = response['reportId']
-                    time.sleep(10)
+                    time.sleep(12)
     
     # download reports
     gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
 
     for report_name in report_ids:        
-        file_path = download_report(report_ids[report_name], gzipped_directory, report_name)
-
         # regrexing table name
         match = re.search(r'(SPONSORED_\w+)\s\((\w*)\)\s(\w+)\s(\[.+\])', report_name)
         ad_product, marketplace, report_type_id, group_by = match[1], match[2], match[3], match[4]
-        table_name = table_names[ad_product][report_type_id][group_by]
+        table_name = table_names[ad_product][report_type_id][group_by]['table_name']
         table_name = f"{ad_product.lower()}.{table_name}"
+
+        # download and save
+        file_path = download_report(report_ids[report_name], gzipped_directory, report_name, marketplace)
+
         # manually ads marketplace
         data = pd.read_json(file_path)
         data['marketplace'] = marketplace
@@ -262,7 +269,7 @@ def create_table(directory, drop_table_if_exists=False):
     # regrexing table name
     match = re.search(r'(SPONSORED_\w*)/(.+)', str(directory))
     ad_product, report_type = match[1], match[2]
-    table_name = f"{ad_product.lower()}.{table_names[ad_product][report_type]}"
+    table_name = f"{ad_product.lower()}.{table_names[ad_product][report_type]['table_name']}"
 
     # combines data in the directory
     combined_data = combine_data(directory, file_extension='.json.gz')
@@ -290,19 +297,27 @@ if __name__ == '__main__':
     datetime_now = dt.datetime.now()
     day = datetime_now.day
     hour = datetime_now.hour
-    # Updates 60 days at the start of the month
+    # update_data('SPONSORED_BRANDS', 'sbGrossAndInvalids', dt.date(2023, 7, 21), dt.date(2024, 7, 18), marketplaces=['CA', 'UK'])
+    # start_date, end_date = dt.date.today() - dt.timedelta(days=60), dt.date.today() -dt.timedelta(days=30)
+    # update_all_data(start_date, end_date)
+    day, hour = 1, 1
+    # Updates 90 days at the start of the month
     if day == 1 and hour == 1:
-        logger.info("-UPDATING SP LAST 60 DAYS-")
-        start_date, end_date = dt.date.today() - dt.timedelta(days=60), dt.date.today()
-        update_all_data(start_date, end_date)
-    # Updates last 2 weeks at the middle of the month
+        logger.info("-UPDATING SP LAST 90 DAYS-")
+        start_date, end_date = dt.date.today() - dt.timedelta(days=90), dt.date.today() - dt.timedelta(days=60)
+        update_all_data(start_date, end_date, 'SPONSORED_PRODUCTS')
+        logger.info("-UPDATING SP & SB LAST 60 DAYS-")
+        update_all_data(start_date + dt.timedelta(days=30), end_date + dt.timedelta(days=30))
+        logger.info("-UPDATING SP & SB LAST 30 DAYS-")
+        update_all_data(start_date + dt.timedelta(days=60), dt.date.today())
+    # Updates last 30 at the middle of the month
     elif day == 15 and hour == 1:
-        logger.info("-UPDATING SP LAST 15 DAYS-")
-        start_date, end_date = dt.date.today() - dt.timedelta(days=15), dt.date.today()
-        update_all_data(start_date, end_date)
+        logger.info("-UPDATING SP & SB LAST 30 DAYS-")
+        start_date, end_date = dt.date.today() - dt.timedelta(days=30), dt.date.today()
+        update_all_data(start_date, end_date) 
     # Updates last 7 days daily
     elif day not in (1, 15) and hour == 1:
-        logger.info("-UPDATING SP LAST 7 DAYS-")
+        logger.info("-UPDATING SP & SB LAST 7 DAYS-")
         start_date, end_date = dt.date.today() - dt.timedelta(days=7), dt.date.today()
         update_all_data(start_date, end_date)
     # Updates `targeting` every hour
