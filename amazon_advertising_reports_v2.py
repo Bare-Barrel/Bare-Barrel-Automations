@@ -327,11 +327,16 @@ if __name__ == '__main__':
     datetime_now = dt.datetime.now()
     day = datetime_now.day
     hour = datetime_now.hour
-    # Updates 60 days at the start of the month
-    if day == 1 and hour == 1:
         logger.info("-UPDATING SB & SD LAST 60 DAYS-")
         start_date, end_date = dt.date.today() - dt.timedelta(days=35), dt.date.today()
         update_all_data(start_date, end_date)
+    # Updates 60 days at the start of the month
+    if day == 1 and hour == 1:
+        logger.info("-UPDATING SB & SD LAST 60 DAYS-")
+        start_date, end_date = dt.date.today() - dt.timedelta(days=60), dt.date.today() - dt.timedelta(days=60)
+        update_all_data(start_date, end_date)
+        logger.info("-UPDATING SB & SD LAST 30 DAYS-")
+        update_all_data(start_date + dt.timedelta(days=30), dt.date.today())
     # Updates last 2 weeks data at the middle of the month
     elif day == 15 and hour == 1:
         logger.info("-UPDATING SB & SD LAST 15 DAYS-")

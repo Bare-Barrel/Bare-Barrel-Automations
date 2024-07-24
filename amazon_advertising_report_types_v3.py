@@ -91,7 +91,7 @@ table_names = {
             },
             "spGrossAndInvalids": {
                 "['campaign']": {
-                    "table_name": "gross_and_invalid",
+                    "table_name": "gross_and_invalid_traffic",
                     "metrics": gross_and_invalid_metrics
                 }
             }
@@ -141,7 +141,7 @@ table_names = {
             },
             "sbGrossAndInvalids": {
                 "['campaign']": {
-                    "table_name": "gross_and_invalid",
+                    "table_name": "gross_and_invalid_traffic",
                     "metrics": gross_and_invalid_metrics
                 }
             }
