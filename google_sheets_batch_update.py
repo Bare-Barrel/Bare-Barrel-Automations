@@ -45,7 +45,7 @@ for worksheet_name in worksheet_queries:
         df = sql_to_dataframe(worksheet_queries[worksheet_name])
 
         logger.info('\tUpdating worksheet data...')
-        set_with_dataframe(worksheet, df, row=3) # Coefficient occupies first 2 rows
+        set_with_dataframe(worksheet, df)
 
         logger.info('\tSuccess!')
 
