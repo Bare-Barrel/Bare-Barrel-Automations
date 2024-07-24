@@ -193,42 +193,6 @@ table_names = {
     }
 
 
-
-
-
-# Sponsored ads group by metrics
-metrics = {
-    # Sponsored Products (version 3)
-    "SPONSORED_PRODUCTS": {
-        "['campaign']": f'{sp_campaign_addtl_metrics}, {sp_campaign_base_metrics}',
-        "['campaign', 'adGroup']": f'{sp_campaign_addtl_metrics}, {sp_adGroup_addtl_metrics}, {sp_campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '),
-        "['campaignPlacement']": f'{sp_campaignPlacement_addtl_metrics}, {sp_campaign_base_metrics}',     # useless? No campaignIds/adGroupIds
-        "['campaign', 'campaignPlacement']": f'{sp_campaign_addtl_metrics}, {sp_campaignPlacement_addtl_metrics}, {sp_campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '),
-        "['adGroup', 'campaignPlacement']": f'{sp_campaignPlacement_addtl_metrics}, {sp_campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '), # can't add adGroup addt'l metrics == campaignPlacement
-        "['campaign', 'adGroup', 'campaignPlacement']": f'{sp_campaign_addtl_metrics}, {sp_campaignPlacement_addtl_metrics}, {sp_campaign_base_metrics}'.replace(', topOfSearchImpressionShare, ', ', '), # Can't add adGrouop add'tl metrics; == campaign, campaignPlacement
-        "['targeting']": f'{sp_targeting_base_metrics}, {sp_targeting_addtl_metrics}',
-        "['searchTerm']": sp_searchTerm_base_metrics,
-        "['advertiser']": sp_advertiser_base_metrics,
-        "['asin']": sp_purchasedProduct_base_metrics
-    },
-    # Sponsored Brands Video (version 3)
-    "SPONSORED_BRANDS": {
-        "['campaign']": sb_campaign_base_metrics, # Additional metrics already in base metrics
-        "['adGroup']": sb_adgroup_base_metrics,
-        # "['campaign']": 
-
-
-        "['purchasedAsin']": sb_purchasedProduct_base_metrics
-    },
-    "SPONSORED_DISPLAY": {
-        "['campaign']": f'{sd_campaign_base_metrics}, {sd_campaign_addtl_metrics}',
-        "['campaign', 'matchedTarget']": f'{sd_campaign_base_metrics}, {sd_campaign_addtl_metrics}, {sd_matchedTarget_addtl_metrics}',
-        "['adGroup']": f'{sd_adgroup_base_metrics}, {sd_adgroup_addtl_metrics}',
-        "['adGroup', 'matchedTarget']": f'{sd_adgroup_base_metrics}, {sd_adgroup_addtl_metrics}, {sd_matchedTarget_addtl_metrics}'
-    }
-}
-
-
 filters = {
     'spSearchTerm': ['TARGETING_EXPRESSION', 'TARGETING_EXPRESSION_PREDEFINED'],
     'spPurchasedProduct': ['BROAD', 'PHRASE', 'EXACT', 'TARGETING_EXPRESSION', 'TARGETING_EXPRESSION_PREDEFINED']
