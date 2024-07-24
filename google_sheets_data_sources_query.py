@@ -2,10 +2,8 @@ worksheet_queries = {
     'FBA-Inv+': '''select * from inventory.fba_planning_inventory
                     order by snapshot_date desc, marketplace, sku;''',
 
-    'FBA-Inv': '''select * from (select * from inventory.fba
-                    order by date desc, marketplace asc, asin asc
-                    limit 5000) as newest_5000
-                    order by date, marketplace, asin;''',
+    'FBA-Inv': '''select * from inventory.fba
+                    order by date desc, marketplace asc, asin asc;''',
 
     'Bus-RP': '''select date, parent_asin, marketplace, traffic_by_asin_mobile_app_sessions, traffic_by_asin_mobile_app_sessions_b2b, traffic_by_asin_browser_sessions,
                     traffic_by_asin_browser_sessions_b2b, traffic_by_asin_sessions, traffic_by_asin_sessions_b2b, (traffic_by_asin_mobile_app_session_percentage_b2b/100) traffic_by_asin_mobile_app_session_percentage_b2b,
