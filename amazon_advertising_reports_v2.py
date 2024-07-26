@@ -327,26 +327,27 @@ if __name__ == '__main__':
     datetime_now = dt.datetime.now()
     day = datetime_now.day
     hour = datetime_now.hour
-        logger.info("-UPDATING SB & SD LAST 60 DAYS-")
-        start_date, end_date = dt.date.today() - dt.timedelta(days=35), dt.date.today()
-        update_all_data(start_date, end_date)
+
     # Updates 60 days at the start of the month
     if day == 1 and hour == 1:
         logger.info("-UPDATING SB & SD LAST 60 DAYS-")
-        start_date, end_date = dt.date.today() - dt.timedelta(days=60), dt.date.today() - dt.timedelta(days=60)
+        start_date, end_date = dt.date.today() - dt.timedelta(days=60), dt.date.today() - dt.timedelta(days=30)
         update_all_data(start_date, end_date)
         logger.info("-UPDATING SB & SD LAST 30 DAYS-")
         update_all_data(start_date + dt.timedelta(days=30), dt.date.today())
-    # Updates last 2 weeks data at the middle of the month
+
+    # Updates last 30 days of data at the middle of the month
     elif day == 15 and hour == 1:
-        logger.info("-UPDATING SB & SD LAST 15 DAYS-")
-        start_date, end_date = dt.date.today() - dt.timedelta(days=15), dt.date.today()
+        logger.info("-UPDATING SB & SD LAST 30 DAYS-")
+        start_date, end_date = dt.date.today() - dt.timedelta(days=30), dt.date.today()
         update_all_data(start_date, end_date)
+
     # Updates last 7 days data daily
     elif day not in (1, 15) and hour == 1:
         logger.info("-UPDATING SB & SD LAST 7 DAYS-")
         start_date, end_date = dt.date.today() - dt.timedelta(days=7), dt.date.today()
         update_all_data(start_date, end_date)
+
     # Updates `campaign` every hour
     elif day not in (1, 15) and hour != 1:
         logger.info("-UPDATING SB & SD Campaigns LAST 2 DAYS-")
