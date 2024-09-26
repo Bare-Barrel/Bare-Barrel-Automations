@@ -52,33 +52,46 @@ async def login_amazon(page):
     """
     logger.info("Logging in to Amazon Sellercentral")
 
-    await page.goto("https://sellercentral.amazon.com/signin?")
+    await page.goto("https://sellercentral.amazon.com")
     await asyncio.sleep(5)
 
+    # checks if it landed on home page
+    login_button = page.get_by_role("link", name="Log in", exact=True)
+
+    if not await login_button.is_visible():
+        return
+    
+    await login_button.click()
+    await asyncio.sleep(2)
+
+    # checks if login page shows select account or input email
     account_button = page.get_by_role("button", name=f"{config['amazon_name']} {config['amazon_email']}")
 
-    # login page requires only password
     if await account_button.count():
         await account_button.click()
-        await page.get_by_label("Password").fill(config['amazon_password'])
-        await page.get_by_role("button", name="Sign in").click()
 
-    # login page requires email & password
     elif await page.is_visible('input[type="email"]'):
         await page.locator('input[type="email"]').fill(config['amazon_email'])
-        await page.get_by_label("Password").fill(config['amazon_password'])
-        await page.get_by_role("button", name="Sign in").click()
-        await asyncio.sleep(10)
 
-        # selects store account and country
-        if await page.is_visible(f"button[name='{config['store_name']}']"):
-            await page.get_by_role("button", name=f"{config['store_name']}").click()
-            await page.get_by_role("button", name="United States").click()
-            await page.get_by_role("button", name="Select Account").click()
-            checkbox = page.locator('input[type="checkbox"][name="rememberMe"]')
-            if await check.is_visible():
-                await checkbox.click()
+    await page.get_by_label("Password").fill(config['amazon_password'])
+    await page.get_by_role("button", name="Sign in").click()
+    await asyncio.sleep(10)
 
+    # checks if two-step verification is visible
+    if await page.get_by_role("heading", name="Two-Step Verification").is_visible():
+        logger.error("Two-factor verification is required")
+        raise Exception
+
+    # selects store account and country
+    if await page.is_visible(f"button[name='{config['store_name']}']"):
+        await page.get_by_role("button", name=f"{config['store_name']}").click()
+        await page.get_by_role("button", name="United States").click()
+        await page.get_by_role("button", name="Select Account").click()
+
+        checkbox = page.locator('input[type="checkbox"][name="rememberMe"]')
+
+        if await checkbox.is_visible():
+            await checkbox.click()
 
     await asyncio.sleep(10)
     return
