@@ -46,19 +46,19 @@ async def generate_download(page, marketplace='US', reporting_range='weekly', da
     """
     logger.info(f"@SearchQueryPerformance Querying {view} {asin} ({marketplace}) {date_report}")
     
-    marketplace = 'GB' if marketplace == 'UK' else marketplace
+    country_id = 'GB' if marketplace == 'UK' else marketplace
 
     reporting_range_formats = {'weekly': 'weekly-week', 'monthly': 'monthly-year=2023&2023-month=2023-04-30', 'quarterly': 'quarterly-year=2023&2023-quarter=2023-03-31'} # unfinished
     sqp_url = {
                 "brand": "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-brands-view" + 
                             "&brand={}&reporting-range={}&{}={}&country-id={}".format(
                             config['amazon_brand_id'], reporting_range, reporting_range_formats[reporting_range], 
-                            date_report, marketplace.lower()
+                            date_report, country_id.lower()
                             ),
                 "asin": "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-asin-view" +
                             "&asin={}&reporting-range={}&{}={}&country-id={}".format(
                             asin, reporting_range, reporting_range_formats[reporting_range], 
-                            date_report, marketplace.lower()
+                            date_report, country_id.lower()
                             )
     }
 
