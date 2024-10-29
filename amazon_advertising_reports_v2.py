@@ -278,6 +278,10 @@ def update_data(ad_product, report_type, start_date, end_date, marketplaces=['US
 
         # combine reports
         combined_data = combine_data(file_paths=file_paths)
+
+        # cleans SB ads_v2 missing ad_id
+        if ad_product == 'SPONSORED_BRANDS' and report_type == 'ads':
+            combined_data.dropna(subset=['adId'], inplace=True)
     
         # upserts to db
         table_name = f"{ad_product.lower()}.{table_names[ad_product][report_type]}"
