@@ -6,7 +6,7 @@ import io
 import gzip
 import time
 from ad_api.api.reports import Reports
-from ad_api.base.exceptions import AdvertisingApiTooManyRequestsException
+from ad_api.base.exceptions import AdvertisingApiTooManyRequestsException, AdvertisingApiException
 from ad_api.base import Marketplaces
 from amazon_advertising_report_types_v3 import table_names
 from utility import to_list
@@ -73,13 +73,29 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
     sleep_multiplier = 1
     while True:
         try:
-            response = Reports(account=marketplace, marketplace=Marketplaces[marketplace]).post_report(body=body)
-            payload = response.payload
-            return payload
+            response = Reports(account=marketplace, 
+                               marketplace=Marketplaces[marketplace]).post_report(body=body)
+            return response.payload
+        
         except AdvertisingApiTooManyRequestsException as e:
-            logger.error(e)
+            logger.warning(e)
             time.sleep(60 * sleep_multiplier)
             sleep_multiplier += 0.05
+
+        # Duplicate request error
+        except AdvertisingApiException as e:
+            logger.warning(e)
+            error_message = e.error
+
+            if error_message['code'] != '425':
+                logger.error("Error code is not 425: Too Early - Request is a duplicate of a processing request")
+                raise e
+
+            # Gets duplicate requested reportId
+            report_id = error_message['detail'].split()[-1]
+            response = Reports(account=marketplace, 
+                               marketplace=Marketplaces[marketplace]).get_report(report_id)
+            return response.payload
 
 
 def download_report(report_id, root_directory, report_name, marketplace):

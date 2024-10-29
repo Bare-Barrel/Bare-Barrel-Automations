@@ -92,6 +92,7 @@ def request_report(ad_product, report_type, report_date, marketplace='US'):
 
     if ad_product == 'SPONSORED_BRANDS':
         body['creativeType'] = 'all'
+
     if ad_product == 'SPONSORED_DISPLAY':
         body['tactic'] = 'T00020'   # Targeting Strategy: Product Targeting
         if report_type == 'asins':
@@ -151,7 +152,8 @@ def download_report(report_id, ad_product, marketplace='US', directory='', repor
 
     logger.info(f"Downloading Report {report_name}")
 
-    for i in range(0, 20):
+    sleep_multiplier = 1
+    for i in range(0, 100):
         response = Reports.get_report(reportId=report_id)
         status = response.payload['status']
 
@@ -186,6 +188,7 @@ def download_report(report_id, ad_product, marketplace='US', directory='', repor
                 logger.info("\tRedownloading...")
 
         time.sleep(30)
+        sleep_multiplier += 0.10
 
     raise Exception("Download failed: max waiting time reached")
 
