@@ -25,10 +25,9 @@ with open('config.json') as f:
 
 table_name = 'rankings.h10_keyword_tracker'
 
-file_path = os.path.join(os.getenv('HOME'), 'Downloads', 'helium10-kt-B0BWWY7H3F-2023-09-22.csv')
-
 def clean_data(file_path):
     data = pd.read_csv(file_path)
+    data = data.drop_duplicates()
     data = data.replace({'-': np.nan, '>306': 306})
     numeric_cols = ['Search Volume', 'Organic Rank', 'Sponsored Position']
     data[numeric_cols] = data[numeric_cols].apply(pd.to_numeric)
@@ -38,6 +37,7 @@ def clean_data(file_path):
 
 def update_data(file_path):
     data = clean_data(file_path)
+    data = data[data['Organic Rank'].notnull()]
     postgresql.upsert_bulk(table_name, data, 'pandas')
 
 def create_table(drop_table_if_exists=False):
@@ -55,4 +55,9 @@ def create_table(drop_table_if_exists=False):
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 if __name__ == '__main__':
-    update_data(file_path)
+    h10_downloads_folder = os.path.join(os.getenv('Google'), 'Mary - Personal Folder', 'H10 Keyword Tracker Downloads')
+    
+    for file in os.listdir(h10_downloads_folder):
+        print(file)
+        file_path = os.path.join(h10_downloads_folder, file)
+        update_data(file_path)
