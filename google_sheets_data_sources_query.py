@@ -3,6 +3,7 @@ worksheet_queries = {
                     order by snapshot_date desc, marketplace, sku;''',
 
     'FBA-Inv': '''select * from inventory.fba
+                    where last_updated_time IS NOT NULL
                     order by date desc, marketplace asc, asin asc;''',
 
     'Bus-RP': '''select date, parent_asin, marketplace, traffic_by_asin_mobile_app_sessions, traffic_by_asin_mobile_app_sessions_b2b, traffic_by_asin_browser_sessions,

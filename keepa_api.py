@@ -14,5 +14,5 @@ with open('config.json') as f:
 api = keepa.Keepa(api_key)
 
 asin = 'B0BKH14N5N'
-products = api.query(asin, offers=True)
+products = api.query(asin, offers=20)
 product = products[0]

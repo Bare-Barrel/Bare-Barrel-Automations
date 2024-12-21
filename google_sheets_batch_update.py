@@ -35,7 +35,7 @@ credentials = Credentials.from_service_account_file(
 def batch_update_data_sources(url):
     '''
     Updates google sheets data sources by specifying url.
-    It automatically detects sheet names to be updated by checking the sheet in the `worksheet_queries`.
+    It automatically detects worksheets to be updated by checking the sheet name in the `worksheet_queries`.
 
     #IMPORTANT#!
     It requires to have a Google project in the Google Cloud Platform and share the sheet to the google bot as an editor.
@@ -78,6 +78,9 @@ def batch_update_data_sources(url):
         
 
 if __name__ == '__main__':
+
     for google_sheet in google_sheet_data_sources:
+
         sheet_url = google_sheet_data_sources[google_sheet]
+
         batch_update_data_sources(sheet_url)

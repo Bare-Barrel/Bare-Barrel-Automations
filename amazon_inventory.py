@@ -44,7 +44,7 @@ def get_data(marketplace='US', **kwargs):
 
     # manually adding marketplace and date
     combined_data['marketplace'] = marketplace
-    combined_data['date'] = dt.datetime.now(pytz.timezone('UTC')).date()
+    combined_data['date'] = dt.datetime.now(pytz.timezone('UTC')).date() + dt.timedelta(days=1)
 
     return combined_data
 
