@@ -72,10 +72,6 @@ async def login_amazon(page):
 
     elif await page.is_visible('input[type="email"]'):
         await page.locator('input[type="email"]').fill(config['amazon_email'])
-        await page.keyboard.press('Enter')
-        await asyncio.sleep(10)
-        # await page.get_by_label('Continue').click(force=True)
-
 
     await page.get_by_label("Password").fill(config['amazon_password'])
     await page.get_by_role("button", name="Sign in").click()

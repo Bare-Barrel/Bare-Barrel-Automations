@@ -56,7 +56,7 @@ def create_table(drop_table_if_exists=False):
 
 if __name__ == '__main__':
     h10_downloads_folder = os.path.join(os.getenv('Google'), 'Mary - Personal Folder', 'H10 Keyword Tracker Downloads')
-    #  sudo mount -t drvfs G: /mnt/g
+    
     for file in os.listdir(h10_downloads_folder):
         print(file)
         file_path = os.path.join(h10_downloads_folder, file)
