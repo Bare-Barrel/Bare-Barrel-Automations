@@ -9,3 +9,5 @@ __pycache__
 *_env
 .DS_Store
 /logging/
+/H10 Keyword Tracker Downloads/
+rclone.conf
