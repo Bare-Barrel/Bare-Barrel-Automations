@@ -216,11 +216,31 @@ worksheet_queries = {
             group by date, portfolio_name , marketplace, currency
             order by date asc, portfolio_name asc, marketplace asc;''',
 
-    'Orders': '''select 
-                    (t1.purchase_date AT TIME ZONE 'GMT')::DATE "GMT-date", (t1.purchase_date AT TIME ZONE 'GMT')::TIME "GMT-time", t1.purchase_date AT TIME ZONE 'GMT' "GMT-datetime", t1.purchase_date AT TIME ZONE 'PDT' "PDT-datetime", (t1.purchase_date AT TIME ZONE 'PDT')::DATE "PDT-date", (REGEXP_MATCHES(seller_sku, '_SL_(.+)'))[1] "CODE", null "Buyer Name", null "Full Name", null "Gift Message",
-                    t1.amazon_order_id, t1.amazon_order_id merchant_order_id, t1.purchase_date, t1.last_update_date,
-                    t1.order_status, t1.fulfillment_channel, t1.sales_channel, null order_channel, null url, t1.ship_service_level,
-                    t2.title product_name, t2.seller_sku, t2.asin, t1.order_status item_status, t2.quantity_ordered, 
+    'Orders-US': '''select 
+                    (t1.purchase_date AT TIME ZONE 'GMT')::DATE "GMT-date", 
+                    (t1.purchase_date AT TIME ZONE 'GMT')::TIME "GMT-time", 
+                    t1.purchase_date AT TIME ZONE 'GMT' "GMT-datetime", 
+                    t1.purchase_date AT TIME ZONE 'PDT' "PDT-datetime", 
+                    (t1.purchase_date AT TIME ZONE 'PDT')::DATE "PDT-date", 
+                    (REGEXP_MATCHES(seller_sku, '_SL_(.+)'))[1] "CODE", 
+                    null "Buyer Name", 
+                    null "Full Name", 
+                    null "Gift Message",
+                    t1.amazon_order_id, 
+                    t1.amazon_order_id merchant_order_id, 
+                    t1.purchase_date, 
+                    t1.last_update_date,
+                    t1.order_status, 
+                    t1.fulfillment_channel, 
+                    t1.sales_channel, 
+                    null order_channel, 
+                    null url, 
+                    t1.ship_service_level,
+                    t2.title product_name, 
+                    t2.seller_sku, 
+                    t2.asin, 
+                    t1.order_status item_status, 
+                    t2.quantity_ordered, 
                     CASE
                     WHEN (t2.item_price_currency_code IS NULL OR t2.item_price_currency_code = 'nan') AND t1.is_replacement_order = FALSE
                         THEN t3.product_competitive_pricing_competitive_prices->0->'Price'->'ListingPrice'->>'CurrencyCode'
@@ -232,8 +252,22 @@ worksheet_queries = {
                         THEN (t3.product_competitive_pricing_competitive_prices->0->'Price'->'ListingPrice'->'Amount')::FLOAT * t2.quantity_ordered
                         ELSE t2.item_price_amount
                     END AS "item_price_amount", 
-                    t2.item_tax_amount, t2.shipping_price_amount, t2.shipping_tax_amount, null gift_wrap_price, null gift_wrap_tax, t2.promotion_discount_amount, t2.shipping_discount_amount,
-                    t1.shipping_address_city, t1.shipping_address_state_or_region, t1.shipping_address_postal_code, t1.shipping_address_country_code, t2.promotion_ids, t1.is_business_order, null purchase_order_number, null price_designation, null signature_confirmation_recommended,
+                    t2.item_tax_amount, 
+                    t2.shipping_price_amount, 
+                    t2.shipping_tax_amount, 
+                    null gift_wrap_price, 
+                    null gift_wrap_tax, 
+                    t2.promotion_discount_amount, 
+                    t2.shipping_discount_amount,
+                    t1.shipping_address_city, 
+                    t1.shipping_address_state_or_region, 
+                    t1.shipping_address_postal_code, 
+                    t1.shipping_address_country_code, 
+                    t2.promotion_ids, 
+                    t1.is_business_order, 
+                    null purchase_order_number, 
+                    null price_designation, 
+                    null signature_confirmation_recommended,
                     t1.is_replacement_order, 
                     CASE
                     WHEN t1.order_status NOT IN ('Pending', 'Canceled') AND t2.item_price_amount IS NULL AND 
@@ -246,7 +280,146 @@ worksheet_queries = {
                                 asin, marketplace, product_competitive_pricing_competitive_prices
                                 from product_pricing.competitive_pricing
                                 where customer_type = 'Business' and product_competitive_pricing_competitive_prices != '[]'
-                                order by asin, marketplace, date desc) as t3 on t2.asin = t3.asin AND t2.marketplace = t3.marketplace 
-                    WHERE t1.purchase_date::DATE > '2024-05-31'
+                                order by asin, marketplace, date desc) as t3 on t2.asin = t3.asin 
+                                                                        AND t2.marketplace = t3.marketplace 
+                    WHERE t1.marketplace = 'US'
+                    order by purchase_date asc;''',
+
+    'Orders-CA': '''select 
+                    (t1.purchase_date AT TIME ZONE 'GMT')::DATE "GMT-date", 
+                    (t1.purchase_date AT TIME ZONE 'GMT')::TIME "GMT-time", 
+                    t1.purchase_date AT TIME ZONE 'GMT' "GMT-datetime", 
+                    t1.purchase_date AT TIME ZONE 'PDT' "PDT-datetime", 
+                    (t1.purchase_date AT TIME ZONE 'PDT')::DATE "PDT-date", 
+                    (REGEXP_MATCHES(seller_sku, '_SL_(.+)'))[1] "CODE", 
+                    null "Buyer Name", 
+                    null "Full Name", 
+                    null "Gift Message",
+                    t1.amazon_order_id, 
+                    t1.amazon_order_id merchant_order_id, 
+                    t1.purchase_date, 
+                    t1.last_update_date,
+                    t1.order_status, 
+                    t1.fulfillment_channel, 
+                    t1.sales_channel, 
+                    null order_channel, 
+                    null url, 
+                    t1.ship_service_level,
+                    t2.title product_name, 
+                    t2.seller_sku, 
+                    t2.asin, 
+                    t1.order_status item_status, 
+                    t2.quantity_ordered, 
+                    CASE
+                    WHEN (t2.item_price_currency_code IS NULL OR t2.item_price_currency_code = 'nan') AND t1.is_replacement_order = FALSE
+                        THEN t3.product_competitive_pricing_competitive_prices->0->'Price'->'ListingPrice'->>'CurrencyCode'
+                        ELSE t2.item_price_currency_code
+                    END AS "currency",
+                    -- Gets Prime Exclusive Price
+                    CASE
+                    WHEN t2.item_price_amount IS NULL AND t1.is_replacement_order = FALSE
+                        THEN (t3.product_competitive_pricing_competitive_prices->0->'Price'->'ListingPrice'->'Amount')::FLOAT * t2.quantity_ordered
+                        ELSE t2.item_price_amount
+                    END AS "item_price_amount", 
+                    t2.item_tax_amount, 
+                    t2.shipping_price_amount, 
+                    t2.shipping_tax_amount, 
+                    null gift_wrap_price, 
+                    null gift_wrap_tax, 
+                    t2.promotion_discount_amount, 
+                    t2.shipping_discount_amount,
+                    t1.shipping_address_city, 
+                    t1.shipping_address_state_or_region, 
+                    t1.shipping_address_postal_code, 
+                    t1.shipping_address_country_code, 
+                    t2.promotion_ids, 
+                    t1.is_business_order, 
+                    null purchase_order_number, 
+                    null price_designation, 
+                    null signature_confirmation_recommended,
+                    t1.is_replacement_order, 
+                    CASE
+                    WHEN t1.order_status NOT IN ('Pending', 'Canceled') AND t2.item_price_amount IS NULL AND 
+                        t1.is_replacement_order = FALSE then 'Y'
+                    ELSE t1.replaced_order_id
+                    END AS "Vine / replaced_order_id"  
+                    from orders.amazon_orders t1
+                    left join orders.amazon_order_items t2 on t1.amazon_order_id = t2.amazon_order_id
+                    left join (select DISTINCT ON (asin, marketplace) 
+                                asin, marketplace, product_competitive_pricing_competitive_prices
+                                from product_pricing.competitive_pricing
+                                where customer_type = 'Business' and product_competitive_pricing_competitive_prices != '[]'
+                                order by asin, marketplace, date desc) as t3 on t2.asin = t3.asin 
+                                                                        AND t2.marketplace = t3.marketplace 
+                    WHERE t1.marketplace = 'CA'
+                    order by purchase_date asc;''',
+
+    'Orders-UK': '''select 
+                    (t1.purchase_date AT TIME ZONE 'GMT')::DATE "GMT-date", 
+                    (t1.purchase_date AT TIME ZONE 'GMT')::TIME "GMT-time", 
+                    t1.purchase_date AT TIME ZONE 'GMT' "GMT-datetime", 
+                    t1.purchase_date AT TIME ZONE 'PDT' "PDT-datetime", 
+                    (t1.purchase_date AT TIME ZONE 'PDT')::DATE "PDT-date", 
+                    (REGEXP_MATCHES(seller_sku, '_SL_(.+)'))[1] "CODE", 
+                    null "Buyer Name", 
+                    null "Full Name", 
+                    null "Gift Message",
+                    t1.amazon_order_id, 
+                    t1.amazon_order_id merchant_order_id, 
+                    t1.purchase_date, 
+                    t1.last_update_date,
+                    t1.order_status, 
+                    t1.fulfillment_channel, 
+                    t1.sales_channel, 
+                    null order_channel, 
+                    null url, 
+                    t1.ship_service_level,
+                    t2.title product_name, 
+                    t2.seller_sku, 
+                    t2.asin, 
+                    t1.order_status item_status, 
+                    t2.quantity_ordered, 
+                    CASE
+                    WHEN (t2.item_price_currency_code IS NULL OR t2.item_price_currency_code = 'nan') AND t1.is_replacement_order = FALSE
+                        THEN t3.product_competitive_pricing_competitive_prices->0->'Price'->'ListingPrice'->>'CurrencyCode'
+                        ELSE t2.item_price_currency_code
+                    END AS "currency",
+                    -- Gets Prime Exclusive Price
+                    CASE
+                    WHEN t2.item_price_amount IS NULL AND t1.is_replacement_order = FALSE
+                        THEN (t3.product_competitive_pricing_competitive_prices->0->'Price'->'ListingPrice'->'Amount')::FLOAT * t2.quantity_ordered
+                        ELSE t2.item_price_amount
+                    END AS "item_price_amount", 
+                    t2.item_tax_amount, 
+                    t2.shipping_price_amount, 
+                    t2.shipping_tax_amount, 
+                    null gift_wrap_price, 
+                    null gift_wrap_tax, 
+                    t2.promotion_discount_amount, 
+                    t2.shipping_discount_amount,
+                    t1.shipping_address_city, 
+                    t1.shipping_address_state_or_region, 
+                    t1.shipping_address_postal_code, 
+                    t1.shipping_address_country_code, 
+                    t2.promotion_ids, 
+                    t1.is_business_order, 
+                    null purchase_order_number, 
+                    null price_designation, 
+                    null signature_confirmation_recommended,
+                    t1.is_replacement_order, 
+                    CASE
+                    WHEN t1.order_status NOT IN ('Pending', 'Canceled') AND t2.item_price_amount IS NULL AND 
+                        t1.is_replacement_order = FALSE then 'Y'
+                    ELSE t1.replaced_order_id
+                    END AS "Vine / replaced_order_id"  
+                    from orders.amazon_orders t1
+                    left join orders.amazon_order_items t2 on t1.amazon_order_id = t2.amazon_order_id
+                    left join (select DISTINCT ON (asin, marketplace) 
+                                asin, marketplace, product_competitive_pricing_competitive_prices
+                                from product_pricing.competitive_pricing
+                                where customer_type = 'Business' and product_competitive_pricing_competitive_prices != '[]'
+                                order by asin, marketplace, date desc) as t3 on t2.asin = t3.asin 
+                                                                        AND t2.marketplace = t3.marketplace 
+                    WHERE t1.marketplace = 'UK'
                     order by purchase_date asc;'''
 }   

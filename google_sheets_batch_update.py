@@ -19,6 +19,12 @@ google_sheet_data_sources = {
     '[Supply C.][SC] WW Data Sources': 'https://docs.google.com/spreadsheets/d/16TKSUWBkJ4MAebOXt33RRWR3NA9gSzzQIOEdPHtRQno/edit?gid=2126659402#gid=2126659402'
 }
 
+# Sheets start row & col
+google_sheets_custom_row_col = {
+    'Orders-US': [3, 1],
+    'Orders-CA': [3, 1],
+    'Orders-UK': [3, 1]
+}
 
 # Google Sheets API authentication
 scopes = [
@@ -32,7 +38,7 @@ credentials = Credentials.from_service_account_file(
 )
 
 
-def batch_update_data_sources(url):
+def batch_update_data_sources(url, worksheets='All'):
     '''
     Updates google sheets data sources by specifying url.
     It automatically detects worksheets to be updated by checking the sheet name in the `worksheet_queries`.
@@ -42,6 +48,7 @@ def batch_update_data_sources(url):
 
     Args
         url (str): url of the Google Sheet
+        sheets (str, list): Worksheets to be updated
     Returns
         None
     '''
@@ -54,7 +61,12 @@ def batch_update_data_sources(url):
     logger.info(sheet)
 
     # Gets worksheet names to be updated
-    worksheet_names = [worksheet.title for worksheet in sheet.worksheets() if worksheet.title in worksheet_queries]
+    if worksheets == 'All':
+        worksheet_names = [worksheet.title for worksheet in sheet.worksheets() if worksheet.title in worksheet_queries]
+    elif isinstance(worksheets, str):
+        worksheet_names = [worksheets]
+    elif isinstance(worksheets, list):
+        worksheet_names = worksheets
 
     # Batch Update Google Sheet
     for worksheet_name in worksheet_names:
@@ -66,7 +78,12 @@ def batch_update_data_sources(url):
             df = sql_to_dataframe(worksheet_queries[worksheet_name])
 
             logger.info('\tUpdating worksheet data...')
-            set_with_dataframe(worksheet, df)
+            if worksheet_name in google_sheets_custom_row_col:
+                set_with_dataframe(worksheet, df, 
+                                   row=google_sheets_custom_row_col[worksheet_name][0], 
+                                   col=google_sheets_custom_row_col[worksheet_name][1])
+            else:
+                set_with_dataframe(worksheet, df)
 
             logger.info('\tSuccess!')
             time.sleep(2.5)
@@ -78,7 +95,6 @@ def batch_update_data_sources(url):
         
 
 if __name__ == '__main__':
-
     for google_sheet in google_sheet_data_sources:
 
         sheet_url = google_sheet_data_sources[google_sheet]
