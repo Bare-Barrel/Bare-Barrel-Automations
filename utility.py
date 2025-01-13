@@ -1,7 +1,13 @@
 import json
 import datetime as dt
 import pandas as pd
+import subprocess
+import logging
+import logger_setup
 
+
+logger_setup.setup_logging(__file__)
+logger = logging.getLogger(__name__)
 
 def to_list(value):
     """
@@ -132,3 +138,37 @@ def get_day_of_week(target_date, desired_day):
 
     # Return the resulting date
     return target_date + dt.timedelta(days=day_difference)
+
+
+def sync_with_rclone(source, destination, config_path=None):
+    """
+    Run an rclone sync command from Python, syncing `source` to `destination`.
+    e.g., source="google_drive:FolderA", destination="/home/user/localFolder"
+    """
+    try:
+        # Construct the command as a list of arguments
+        cmd = [
+            "rclone", 
+            "sync", 
+            source, 
+            destination, 
+            "--progress",  # optional: show progress in the terminal
+            # Add any other flags you want, e.g. "--dry-run"
+        ]
+
+        if config_path:
+            cmd.extend(["--config", config_path])
+
+        logger.info(f"Syncing {source} to {destination}")
+        
+        # Run the command, check=True means it raises an exception if the exit code is non-zero
+        subprocess.run(cmd, check=True)
+        logger.info("Sync completed successfully!")
+    except subprocess.CalledProcessError as e:
+        # This exception is raised if rclone exits with a non-zero status
+        logger.error(f"Error: rclone sync failed with error code {e.returncode}")
+        raise e
+    except FileNotFoundError:
+        # Raised if the 'rclone' binary isn't found on the system
+        logger.error("Error: rclone is not installed or not found in PATH.")
+        raise FileNotFoundError
