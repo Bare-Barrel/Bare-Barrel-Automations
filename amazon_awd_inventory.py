@@ -44,7 +44,7 @@ def list_all_inventory(marketplace='US', **kwargs):
     return inventory
 
 
-def get_all_inbound_shipments_summary(marketplaces=['US', 'CA', 'UK'], **kwargs):
+def get_all_inbound_shipments_summary(marketplaces=['UK'], **kwargs):
     """
     Combines inbound AWD shipments summary payload
 
@@ -198,4 +198,4 @@ if __name__ == '__main__':
                    'inventory.awd_inbound_shipments']
 
     for table_name in table_names:
-        update_data(table_name, ['US', 'CA'])
+        update_data(table_name, ['US']) # AWD is only available in US for now
