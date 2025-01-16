@@ -132,7 +132,7 @@ def is_camel_case(string):
     return True
 
 
-def sql_standardize(name, remove_parenthesis=True, remove_file_extension=True):
+def sql_standardize(name, remove_parenthesis=True, remove_file_extension=False):
     """Standardizes column & table names according to SQL naming convention.
     Automatically detects if camelCase is used.
     Column & table names that starts with a numeric character will always
@@ -199,7 +199,7 @@ def create_table(cur, file_path, file_extension='auto', table_name='filename', c
     # Create the SQL CREATE TABLE statement
     if table_name == 'filename':
         base_filename = os.path.basename(file_path)
-        table_name = sql_standardize(base_filename)
+        table_name = sql_standardize(base_filename, remove_file_extension=True)
     create_table_sql = f"CREATE TABLE {table_name} ("
 
     # Iterate through each column, cleans & identifies data type
@@ -829,7 +829,7 @@ def create_sponsored_tables(cur, directory):
     for root, path, files in os.walk(directory):
         for file in files:
             file_path = os.path.join(root, file)
-            table_name = sql_standardize(file)
+            table_name = sql_standardize(file, remove_file_extension=False)
             logger.info(f"Creating table {table_name}")
             create_table(cur, file_path)
             logger.info("Updating triggers")
