@@ -251,7 +251,11 @@ def create_table(cur, file_path, file_extension='auto', table_name='filename', c
         elif not_null_col_values.transform(lambda x: x.apply(type).eq(list)).all():
             # filters out empty lists
             not_null_col_values = not_null_col_values[not_null_col_values.apply(lambda x: len(x) > 0)]
-            if type(not_null_col_values.values[0][0]) == str:
+
+            # unknown cols that contains only empty lists are converted into jsonb
+            if not_null_col_values.shape[0] == 0:
+                data_type = 'jsonb'
+            elif type(not_null_col_values.values[0][0]) == str:
                 data_type = 'text[]'
             elif type(not_null_col_values.values[0][0]) == int:
                 data_type = 'integer[]'
