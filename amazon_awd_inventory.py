@@ -127,7 +127,7 @@ def get_all_inbound_shipments(marketplaces=['US', 'CA', 'UK'], **kwargs):
     for marketplace in to_list(marketplaces):
         logger.info(f"Querying all shipment ids in {marketplace}")
         query = f"""
-                SELECT DISTINCT shipment_id FROM inventory.awd_inbound_shipments_summary
+                SELECT DISTINCT shipment_id FROM awd.inbound_shipments_summary
                 WHERE marketplace = '{marketplace}';
                 """
         shipment_ids = postgresql.sql_to_dataframe(query)
@@ -163,9 +163,9 @@ def update_data(table_name, marketplaces=['US', 'CA', 'UK']):
     Upserts awd inventory for the day.
     """
     table_names = {
-        'inventory.awd_inbound_shipments_summary': lambda: get_all_inbound_shipments_summary(marketplaces),
-        'inventory.awd_inventory': lambda: get_all_inventory(marketplaces, details='SHOW', maxResults=200),
-        'inventory.awd_inbound_shipments': lambda: get_all_inbound_shipments(marketplaces, skuQuantities='SHOW')
+        'awd.inbound_shipments_summary': lambda: get_all_inbound_shipments_summary(marketplaces),
+        'awd.inventory': lambda: get_all_inventory(marketplaces, details='SHOW', maxResults=200),
+        'awd.inbound_shipments': lambda: get_all_inbound_shipments(marketplaces, skuQuantities='SHOW')
     }
     data = table_names[table_name]()
 
@@ -175,9 +175,9 @@ def update_data(table_name, marketplaces=['US', 'CA', 'UK']):
 
 def create_table(table_name, drop_table_if_exists=False):
     table_names = {
-        'inventory.awd_inbound_shipments_summary': lambda: get_all_inbound_shipments_summary(['US', 'CA']),
-        'inventory.awd_inventory': lambda: get_all_inventory(['US', 'CA'], details='SHOW', maxResults=200),
-        'inventory.awd_inbound_shipments': lambda: get_all_inbound_shipments(['US', 'CA'], skuQuantities='SHOW')
+        'awd.inbound_shipments_summary': lambda: get_all_inbound_shipments_summary(['US', 'CA']),
+        'awd.inventory': lambda: get_all_inventory(['US', 'CA'], details='SHOW', maxResults=200),
+        'awd.inbound_shipments': lambda: get_all_inbound_shipments(['US', 'CA'], skuQuantities='SHOW')
     }
     data = table_names[table_name]()
 
@@ -193,9 +193,9 @@ def create_table(table_name, drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    table_names = ['inventory.awd_inbound_shipments_summary', 
-                   'inventory.awd_inventory',
-                   'inventory.awd_inbound_shipments']
+    table_names = ['awd.inbound_shipments_summary', 
+                   'awd.inventory',
+                   'awd.inbound_shipments']
 
     for table_name in table_names:
         update_data(table_name, ['US']) # AWD is only available in US for now
