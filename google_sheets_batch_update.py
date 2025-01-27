@@ -95,6 +95,7 @@ def batch_update_data_sources(url, worksheets='All'):
         
 
 if __name__ == '__main__':
+    # batch_update_data_sources(google_sheet_data_sources['[Supply C.][SC] WW Data Sources'], 'Shipments')
     for google_sheet in google_sheet_data_sources:
 
         sheet_url = google_sheet_data_sources[google_sheet]

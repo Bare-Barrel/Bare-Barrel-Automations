@@ -421,5 +421,67 @@ worksheet_queries = {
                                 order by asin, marketplace, date desc) as t3 on t2.asin = t3.asin 
                                                                         AND t2.marketplace = t3.marketplace 
                     WHERE t1.marketplace = 'UK'
-                    order by purchase_date asc;'''
+                    order by purchase_date asc;''',
+
+    "Shipments": '''(
+                -- Combines FBA and AWD shipments data
+                    -- FBA Shipments
+                        select t1.ship_from_address_country_code    "origin country",
+                            t3.destination_address_country_code  "destination country",
+                            t1.shipment_name                     "shipment name",
+                            t1.shipment_id                       "shipment id",
+                            t4.date_created_at                   "created",
+                            t4.last_updated_at                   "last updated",
+                            t1.destination_fulfillment_center_id "fulfillment center",
+                            t2.skus_count                        "skus",
+                            t2.quantity_shipped                  "quantity shipped",
+                            t2.quantity_received                 "quantity received",
+                            t1.shipment_status                   "shipment status",
+                            t3.amazon_reference_id               "reference id",
+                            t4.inbound_plan_id                   "inbound plan id"
+                        from fulfillment_inbound.shipments t1
+                                left join (select shipment_id,
+                                                sum(quantity_shipped)  quantity_shipped,
+                                                sum(quantity_received) quantity_received,
+                                                count(seller_sku)      skus_count
+                                            from fulfillment_inbound.shipment_items
+                                            group by shipment_id) t2
+                                        on t1.shipment_id = t2.shipment_id
+                                left join fulfillment_inbound.inbound_plans_shipments t3
+                                        on t1.shipment_id = t3.shipment_confirmation_id
+                                left join (select inbound_plan_id,
+                                                jsonb_array_elements(shipments) ->> 'shipmentId' shipment_id,
+                                                date_created_at,
+                                                last_updated_at
+                                            from fulfillment_inbound.inbound_plans_info) t4
+                                        on t3.shipment_id = t4.shipment_id
+
+                        UNION
+
+                    -- AWD
+                        select t1.origin_address_country_code                "origin country",
+                            t1.destination_address_country_code           "destination country",
+                            null                                          "shipment name",
+                            t1.order_id                                   "shipment id",
+                            t1.shipment_create_date_utc                   "created",
+                            t1.shipment_last_update_date_utc              "last updated",
+                            t1.destination_address_name                   "fulfillment center",
+                            t2.skus_count                                 "skus",
+                            t2.total_expected                             "quantity shipped",
+                            (t1.received_quantity[0] ->> 'quantity')::int "quantity received",
+                            t1.shipment_status,
+                            t1.warehouse_reference_id                     "reference id",
+                            null                                          "inbound plan id"
+                        from awd.inbound_shipments t1
+                                left join (select order_id,
+                                                count((elem -> 'sku')::text)                          skus_count,
+                                                sum((elem -> 'expectedQuantity' ->> 'quantity')::int) total_expected
+                                            from awd.inbound_shipments
+                                                    cross join lateral jsonb_array_elements(shipment_sku_quantities) as elem
+                                            where date = (select max(date) from awd.inbound_shipments)
+                                            group by order_id) t2
+                                        on t1.order_id = t2.order_id
+                        where t1.date = (select max(date) from awd.inbound_shipments)
+                    )
+                    order by created desc nulls last, "shipment id", "destination country" desc nulls last;'''
 }   
