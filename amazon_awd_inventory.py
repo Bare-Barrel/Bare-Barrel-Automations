@@ -69,7 +69,7 @@ def get_all_inbound_shipments_summary(marketplaces=['UK'], **kwargs):
         for page in response:
             payload = page.payload.get('shipments')
             data = pd.json_normalize(payload)
-            data.insert(0, 'marketplace', marketplace)
+            # data.insert(0, 'marketplace', marketplace)
             shipments_data = pd.concat([shipments_data, data], ignore_index=True)
 
     # Renaming createdAt & updatedAt to match Sellercentral report 
@@ -106,7 +106,7 @@ def get_all_inventory(marketplaces=['US', 'CA', 'UK'], **kwargs):
             payload = page.payload.get('inventory')
             data = pd.json_normalize(payload)
             data.insert(0, 'date', dt.date.today())
-            data.insert(0, 'marketplace', marketplace)
+            # data.insert(0, 'marketplace', marketplace)
             inventory_data = pd.concat([inventory_data, data], ignore_index=True)
 
     return inventory_data
@@ -142,7 +142,7 @@ def get_all_inbound_shipments(marketplaces=['US', 'CA', 'UK'], **kwargs):
             payload = response.payload
             data = pd.json_normalize(payload)
             data.insert(0, 'date', dt.date.today())
-            data.insert(0, 'marketplace', marketplace)
+            # data.insert(0, 'marketplace', marketplace)
             inbound_shipments_data = pd.concat([inbound_shipments_data, data], ignore_index=True)
 
             time.sleep(2)
