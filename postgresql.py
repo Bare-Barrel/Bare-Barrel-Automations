@@ -415,6 +415,7 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             if column_name not in data.columns:
                 data[column_name] = np.nan
                 logger.info(f"\tMissing column: {column_name}")
+                continue
             # percentage str columns
             if data_type in (int, float) and data[column_name].dtype == 'object' and data[column_name].str.contains('%').any():
                 data[column_name] = data[column_name].str.replace('%', '').astype(float) / 100
