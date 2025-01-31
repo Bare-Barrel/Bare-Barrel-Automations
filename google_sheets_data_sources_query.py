@@ -437,6 +437,7 @@ worksheet_queries = {
                             t2.quantity_shipped                  "quantity shipped",
                             t2.quantity_received                 "quantity received",
                             t1.shipment_status                   "shipment status",
+                            t1.ship_from_address_name            "ship from",
                             t3.amazon_reference_id               "reference id",
                             t4.inbound_plan_id                   "inbound plan id"
                         from fulfillment_inbound.shipments t1
@@ -459,17 +460,18 @@ worksheet_queries = {
                         UNION
 
                     -- AWD
-                        select t1.origin_address_country_code                "origin country",
+                        select t1.origin_address_country_code             "origin country",
                             t1.destination_address_country_code           "destination country",
                             null                                          "shipment name",
-                            t1.order_id                                   "shipment id",
+                            t1.shipment_id                                "shipment id",
                             t1.shipment_create_date_utc                   "created",
                             t1.shipment_last_update_date_utc              "last updated",
                             t1.destination_address_name                   "fulfillment center",
                             t2.skus_count                                 "skus",
                             t2.total_expected                             "quantity shipped",
                             (t1.received_quantity[0] ->> 'quantity')::int "quantity received",
-                            t1.shipment_status,
+                            t1.shipment_status                            "shipment status",
+                            t1.origin_address_name                        "ship from",
                             t1.warehouse_reference_id                     "reference id",
                             null                                          "inbound plan id"
                         from awd.inbound_shipments t1
