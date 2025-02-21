@@ -842,3 +842,13 @@ def create_sponsored_tables(cur, directory):
             logger.info("Upserting bulk")
             upsert_bulk(table_name, file_path)
 
+
+def get_tenants():
+    """
+    Get all tenants from the database
+    Returns dict
+    """
+    data = sql_to_dataframe("SELECT tenant_id, company FROM tenants")
+    # converts to dict
+    data = data.set_index('company').to_dict()['tenant_id']
+    return data
