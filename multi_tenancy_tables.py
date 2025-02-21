@@ -5,7 +5,7 @@ from psycopg2.errors import DuplicateColumn
 query = '''
             SELECT table_schema, table_name
             FROM information_schema.tables
-            WHERE table_schema IN ('public', 'awd', 'brand_analytics', 'business_reports', 'fulfillment_inbound', 'inventory', 'listing_items', 'product_pricing', 'products', 'rankings', 'sponsored_brands', 'sponsored_display', 'sponsored_products', 'orders')
+            WHERE table_schema IN ('listings_items')
                 AND table_name NOT IN ('tenants', 'amazon_marketplaces')
                 AND TABLE_TYPE = 'BASE TABLE';
         '''
