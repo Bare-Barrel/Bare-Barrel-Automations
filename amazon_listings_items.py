@@ -21,9 +21,11 @@ listings_items_schema = 'listings_items'
 table_names = {'summaries': 'summaries', 'attributes': 'attributes', 'issues': 'issues', 'offers': 'offers', 
                 'fulfillment_availability': 'fulfillmentAvailability'} #, 'procurement': 'procurement'} empty
 
+tenants = postgresql.get_tenants()
+
 
 def get_all_listings_items(included_data=['summaries', 'attributes', 'issues', 'offers', 'fulfillmentAvailability', 'procurement'], 
-                            marketplaces=['US', 'CA', 'UK']):
+                            account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     """
     Gets multiple item listings
     Args
@@ -45,12 +47,14 @@ def get_all_listings_items(included_data=['summaries', 'attributes', 'issues', '
         listings_data[data_set] = pd.DataFrame()
 
     for marketplace in to_list(marketplaces):
-        logger.info(f"Getting listing items {str(included_data)} in {marketplace}")
+        logger.info(f"Getting listing items {str(included_data)} in {account}-{marketplace}")
 
         # Retrieves all skus per marketplace
         with postgresql.setup_cursor() as cur:
             cur.execute(f"""SELECT DISTINCT seller_sku 
-                            FROM inventory.fba WHERE marketplace = '{marketplace}';""")
+                            FROM inventory.fba 
+                            WHERE marketplace = '{marketplace}'
+                            AND tenant_id = {tenants[account]};""")
             skus = [sku['seller_sku'] for sku in cur.fetchall()]
         
         for sku in skus:
@@ -58,8 +62,12 @@ def get_all_listings_items(included_data=['summaries', 'attributes', 'issues', '
 
             while True:
                 try:
-                    response = ListingsItems(account=marketplace, marketplace=Marketplaces[marketplace]).get_listings_item(seller_id[marketplace], sku, 
-                                                                            includedData=','.join(to_list(included_data)))
+                    response = ListingsItems(account=f'{account}-{marketplace}', 
+                                            marketplace=Marketplaces[marketplace]).get_listings_item(
+                                                                                    seller_id[marketplace], 
+                                                                                    sku, 
+                                                                                    includedData=','.join(to_list(included_data))
+                                                                                )
 
                     # Combies each included data set payload
                     for data_set in included_data:
@@ -67,6 +75,7 @@ def get_all_listings_items(included_data=['summaries', 'attributes', 'issues', '
                         data['sku'] = sku
                         data['marketplace'] = marketplace
                         data['date'] = dt.datetime.utcnow().date()
+                        data['tenant_id'] = tenants[account]
                         data = reposition_columns(data, {'sku':0, 'date': 1, 'marketplace': 2})
                         listings_data[data_set] = pd.concat([data, listings_data[data_set]], ignore_index=True)
 
@@ -82,10 +91,10 @@ def get_all_listings_items(included_data=['summaries', 'attributes', 'issues', '
     return listings_data
 
 
-def update_data(tables=table_names.keys(), marketplaces=['US', 'CA', 'UK']):
+def update_data(tables=table_names.keys(), account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     # Gets all included data in one response
     included_data = [table_names[table_name] for table_name in tables]
-    listings_data = get_all_listings_items(included_data, marketplaces)
+    listings_data = get_all_listings_items(included_data, account, marketplaces)
 
     # Upserts
     for table in tables:
