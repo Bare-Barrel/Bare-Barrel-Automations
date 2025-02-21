@@ -14,9 +14,10 @@ logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
 table_name = 'inventory.fba_planning_inventory'
+tenants = postgresql.get_tenants()
 
 
-def download_combine_reports(marketplaces=['US', 'CA', 'UK']):
+def download_combine_reports(account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     """
     Requests GET_FBA_INVENTORY_PLANNING_DATA and downloads daily reports. 
     It can only request data at t-2. 
@@ -35,7 +36,9 @@ def download_combine_reports(marketplaces=['US', 'CA', 'UK']):
 
         for tries in range(0, 21):
             try:
-                report_id = request_report(ReportType.GET_FBA_INVENTORY_PLANNING_DATA, marketplace)
+                report_id = request_report(ReportType.GET_FBA_INVENTORY_PLANNING_DATA, 
+                                            account, 
+                                            marketplace)
                 report_ids[marketplace] = report_id
                 break
 
@@ -52,8 +55,8 @@ def download_combine_reports(marketplaces=['US', 'CA', 'UK']):
     for marketplace in report_ids:
         # Downloads report in bytes
         report_id = report_ids[marketplace]
-        document_id = get_report(report_id, marketplace)
-        downloaded_data = download_report(document_id, marketplace) # bytes of the text data
+        document_id = get_report(report_id, account, marketplace)
+        downloaded_data = download_report(document_id, account, marketplace) # bytes of the text data
 
         # Decode the bytes into a string & split string into lines
         str_downloaded_data = downloaded_data.decode('utf-8')
@@ -62,17 +65,18 @@ def download_combine_reports(marketplaces=['US', 'CA', 'UK']):
         # Reads data to dataframe
         data = pd.read_csv(StringIO('\n'.join(data_lines)), delimiter='\t')
         data = reposition_columns(data, {'marketplace': 0})
+        data['tenant_id'] = tenants[account]
         combined_data = pd.concat([combined_data, data], ignore_index=True)
 
     return combined_data
 
 
-def update_data(marketplaces=['US', 'CA', 'UK']):
+def update_data(account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     """
     Updates GET_FBA_INVENTORY_PLANNING_DATA latest snapshot at t-2
     """
-    logger.info(f"Updating GET_FBA_INVENTORY_PLANNING_DATA {marketplaces}")
-    data = download_combine_reports(marketplaces)
+    logger.info(f"Updating GET_FBA_INVENTORY_PLANNING_DATA {account}-{marketplaces}")
+    data = download_combine_reports(account, marketplaces)
     postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 
@@ -85,7 +89,7 @@ def create_table(drop_table_if_exists=True):
             cur.execute(f"DROP TABLE IF EXISTS {table_name};")
 
         postgresql.create_table(cur, data, file_extension='pandas', table_name=table_name,
-                            keys='PRIMARY KEY (marketplace, snapshot_date, sku, condition)')
+                            keys='PRIMARY KEY (marketplace snapshot_date, sku, condition)')
 
         postgresql.update_updated_at_trigger(cur, table_name)
 
