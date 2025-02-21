@@ -16,7 +16,7 @@ logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
 
-def request_report(report_type, marketplace, start_date=None, end_date=None, **kwargs):
+def request_report(report_type, account, marketplace, start_date=None, end_date=None, **kwargs):
     """
     Requests any type of report found in 
     https://developer-docs.amazon.com/sp-api/docs/sp-api-seller-use-cases#fulfillment-by-amazon-fba
@@ -39,14 +39,17 @@ def request_report(report_type, marketplace, start_date=None, end_date=None, **k
         start_date = dt.datetime.combine(start_date, dt.time.min).isoformat()
         end_date = dt.datetime.combine(end_date, dt.time.max).isoformat()
 
-    logger.info(f"Requesting {report_type} ({marketplace}) {f'{start_date} - {end_date}' if start_date else ''}")
+    logger.info(f"Requesting {report_type} {account}-{marketplace} {f'{start_date} - {end_date}' if start_date else ''}")
 
-    response = ReportsV2(account=marketplace, marketplace=Marketplaces[marketplace]).create_report(
-                            reportType = report_type,
-                            reportOptions = kwargs,
-                            # optionally, you can set a start and end time for some reports
-                            dataStartTime = start_date,
-                            dataEndTime = end_date
+    response = ReportsV2(
+                    account=f'{account}-{marketplace}',
+                    marketplace=Marketplaces[marketplace]
+            ).create_report(
+                        reportType = report_type,
+                        reportOptions = kwargs,
+                        # optionally, you can set a start and end time for some reports
+                        dataStartTime = start_date,
+                        dataEndTime = end_date
     )
 
     report_id = response.payload['reportId']
@@ -54,14 +57,14 @@ def request_report(report_type, marketplace, start_date=None, end_date=None, **k
     return report_id
 
 
-def get_report(report_id, marketplace):
+def get_report(report_id, account, marketplace):
     """
     Checks and waits for the report status to be downloaded.
 
     Returns document_id (str)
     """
-    result = ReportsV2(account=marketplace, 
-                    marketplace=Marketplaces[marketplace]).get_report(report_id)
+    result = ReportsV2(account=f'{account}-{marketplace}', 
+                        marketplace=Marketplaces[marketplace]).get_report(report_id)
     payload = result.payload
     status = payload['processingStatus']
     logger.info(f"Report Processing Status: {status}")
@@ -72,18 +75,18 @@ def get_report(report_id, marketplace):
             return document_id
 
     time.sleep(15)
-    return get_report(report_id, marketplace)
+    return get_report(report_id, account, marketplace)
 
 
-def download_report(document_id, marketplace):
+def download_report(document_id, account, marketplace):
     """
     Downloads the url from the `get_report` function into memory without saving the file.
 
     Returns response.content
     """
     try:
-        response = ReportsV2(account=marketplace, 
-                    marketplace=Marketplaces[marketplace]).get_report_document(document_id)
+        response = ReportsV2(account=f'{account}-{marketplace}', 
+                                marketplace=Marketplaces[marketplace]).get_report_document(document_id)
         url = response.payload['url']
         response = requests.get(url)
 
@@ -98,7 +101,7 @@ def download_report(document_id, marketplace):
     except Exception as error:
         logger.warning(f"Error {error}")
         time.sleep(30)
-        return download_report(document_id, marketplace)
+        return download_report(document_id, account, marketplace)
 
 
 if __name__ == '__main__':
