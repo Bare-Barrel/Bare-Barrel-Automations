@@ -13,9 +13,10 @@ logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
 product_pricing_table = 'product_pricing.competitive_pricing'
+tenants = postgresql.get_tenants()
 
 
-def get_competitive_pricing(asin_list, customer_type='Consumer', item_condition='New', marketplace='US'):
+def get_competitive_pricing(asin_list, customer_type='Consumer', item_condition='New', account='Bare Barrel', marketplace='US'):
     """
     Competitive pricing information for a seller's offer listings based on seller SKU or ASIN.
     Iterates for every 20 ASINs, combines payload and returns combined dataframe.
@@ -29,7 +30,8 @@ def get_competitive_pricing(asin_list, customer_type='Consumer', item_condition=
     Returns:
         combined_data (pd.DataFrame)
     """
-    logger.info(f"Getting {item_condition} Competitve {customer_type} Pricing of {len(asin_list)} ASINs ({marketplace})")
+    print(marketplace)
+    logger.info(f"Getting {item_condition} Competitve {customer_type} Pricing of {len(asin_list)} ASINs {account}-{marketplace}")
     combined_data = pd.DataFrame()
     # Makes call for every 20 asins
     max_asins = 20
@@ -43,11 +45,12 @@ def get_competitive_pricing(asin_list, customer_type='Consumer', item_condition=
 
             try:
                 logger.info('\t' + f"Processing {total_processed} / {len(asin_list)}. . .")
-                response = Products(account=marketplace, marketplace=Marketplaces[marketplace]).get_competitive_pricing_for_asins(asin_list=asins, item_condition='New', customer_type=customer_type)
+                response = Products(account=f'{account}-{marketplace}', marketplace=Marketplaces[marketplace]).get_competitive_pricing_for_asins(asin_list=asins, item_condition='New', customer_type=customer_type)
                 data = pd.json_normalize(response.payload, sep='_')
                 data['date'] = dt.date.today()
                 data['customer_type'] = customer_type
                 data['marketplace'] = marketplace
+                data['tenant_id'] = tenants[account]
                 combined_data = pd.concat([data, combined_data], ignore_index=True)
                 time.sleep(2)
                 break
@@ -60,32 +63,37 @@ def get_competitive_pricing(asin_list, customer_type='Consumer', item_condition=
     return combined_data
 
 
-def get_listings_prime_prices(customer_type='Consumer', marketplace='US'):
+def get_listings_prime_prices(customer_type='Consumer', account='Bare Barrel', marketplace='US'):
     """
     Gets active listings products prime prices
     """
     # Gets active listing asins
     with postgresql.setup_cursor() as cur:
-        cur.execute(f"""SELECT asin FROM listings_items.summaries
+        cur.execute(f"""
+                    SELECT asin FROM listings_items.summaries
                     WHERE status @> ARRAY['DISCOVERABLE']
-                    AND marketplace = '{marketplace}'
-                    AND date = (select max(date) from listings_items.summaries
-                                where marketplace = '{marketplace}');""")
+                        AND marketplace = '{marketplace}'
+                        AND tenant_id = {tenants[account]}
+                        AND date = (select max(date) from listings_items.summaries
+                                    where marketplace = '{marketplace}')
+                                        and tenant_id = {tenants[account]};
+                    """)
         active_asins = [row['asin'] for row in cur.fetchall()]
 
-    data = get_competitive_pricing(active_asins, customer_type=customer_type, marketplace=marketplace)
-
+    data = get_competitive_pricing(active_asins, customer_type=customer_type, 
+                                    account=account, marketplace=marketplace)
+    data['tenant_id'] = tenants[account]
     return data
 
 
-def update_data(customer_types=['Consumer', 'Business'], marketplaces=['US', 'CA', 'UK']):
-    logger.info("Updating Competitive Pricing Table")
+def update_data(customer_types=['Consumer', 'Business'], account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
+    logger.info(f"Updating Competitive Pricing Table {account}-{marketplaces}")
     combined_data = pd.DataFrame()
 
     for customer_type in to_list(customer_types):
 
         for marketplace in to_list(marketplaces):
-            data = get_listings_prime_prices(customer_type, marketplace)
+            data = get_listings_prime_prices(customer_type, account, marketplace)
             combined_data = pd.concat([combined_data, data], ignore_index=True)
 
     postgresql.upsert_bulk(product_pricing_table, combined_data, 'pandas')
