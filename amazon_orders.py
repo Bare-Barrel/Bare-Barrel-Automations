@@ -61,7 +61,7 @@ def update_data(account='Bare Barrel', marketplaces=['US', 'CA', 'UK'], **kwargs
     Updates orders data based from the last updated date
     """
     for marketplace in to_list(marketplaces):
-        logger.info(f"Getting Orders from {marketplace}. . .")
+        logger.info(f"Getting Orders from {account}-{marketplace}. . .")
 
         # gets latest orders
         with postgresql.setup_cursor() as cur:
