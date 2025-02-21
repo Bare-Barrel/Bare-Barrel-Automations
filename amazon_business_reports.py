@@ -17,9 +17,10 @@ logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
 base_table_name = 'business_reports.detail_page_sales_and_traffic'
+tenants = postgresql.get_tenants()
 
 
-def download_combine_reports(start_date, end_date, marketplace,  asin_granularity='PARENT', date_granularity='DAY'):
+def download_combine_reports(start_date, end_date, account, marketplace,  asin_granularity='PARENT', date_granularity='DAY'):
     """
     Requests a `Detail Page Sales and Traffic` report found in business reports in seller central.
     The report provides two granularity reports salesAndTrafficByDate and [salesAndTrafficByAsin, salesAndTrafficByParent, salesAndTrafficByChild].
@@ -41,8 +42,11 @@ def download_combine_reports(start_date, end_date, marketplace,  asin_granularit
 
     while current_date <= end_date:
         try:
-            report_id = request_report(ReportType.GET_SALES_AND_TRAFFIC_REPORT, marketplace,
-                                        start_date=current_date, end_date=current_date,
+            report_id = request_report(ReportType.GET_SALES_AND_TRAFFIC_REPORT, 
+                                        account,
+                                        marketplace,
+                                        start_date=current_date, 
+                                        end_date=current_date,
                                         asinGranularity=asin_granularity)
             report_ids[current_date] = report_id
             current_date += dt.timedelta(days=1)
@@ -61,8 +65,8 @@ def download_combine_reports(start_date, end_date, marketplace,  asin_granularit
     for date in report_ids:
         # Downloads data
         report_id = report_ids[date]
-        document_id = get_report(report_id, marketplace)
-        compressed_data = download_report(document_id, marketplace)
+        document_id = get_report(report_id, account, marketplace)
+        compressed_data = download_report(document_id, account, marketplace)
 
         # Decompresses data
         decompressed_data = gzip.decompress(compressed_data).decode('utf-8')
@@ -72,15 +76,17 @@ def download_combine_reports(start_date, end_date, marketplace,  asin_granularit
         data = pd.json_normalize(data, sep='_')
         data.insert(0, 'date', date)
         data.insert(0, 'marketplace', marketplace)
+        data.insert(0, 'tenant_id', tenants[account])
         combined_data = pd.concat([data, combined_data], ignore_index=True)
 
     return combined_data
 
 
-def update_data(asin_granularity='PARENT', marketplaces=['US', 'CA', 'UK'], start_date=(dt.datetime.utcnow() - dt.timedelta(days=7)), end_date=(dt.datetime.utcnow() - dt.timedelta(days=1))):
+def update_data(asin_granularity='PARENT', account='Bare Barrel', marketplaces=['US', 'CA', 'UK'], 
+                start_date=(dt.datetime.utcnow() - dt.timedelta(days=7)), end_date=(dt.datetime.utcnow() - dt.timedelta(days=1))):
     for marketplace in to_list(marketplaces):
-        logger.info(f"Updating data {asin_granularity} {marketplace} {start_date} - {end_date}")
-        data = download_combine_reports(start_date, end_date, marketplace, asin_granularity=asin_granularity)
+        logger.info(f"Updating data {asin_granularity} {account}-{marketplace} {start_date} - {end_date}")
+        data = download_combine_reports(start_date, end_date, account, marketplace, asin_granularity=asin_granularity)
         table_name = base_table_name + f"_{asin_granularity.lower()}"
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
@@ -89,7 +95,7 @@ def create_table(asin_granularity, drop_table_if_exists=False):
     # Requests worth 30 days sample of data
     start_date = (dt.datetime.utcnow() - dt.timedelta(days=5))
     end_date = (dt.datetime.utcnow() - dt.timedelta(days=1))
-    data = download_combine_reports(start_date, end_date, 'US', asin_granularity=asin_granularity)
+    data = download_combine_reports(start_date, end_date, 'Bare Barrel', 'US', asin_granularity=asin_granularity)
 
     table_name = base_table_name + f"_{asin_granularity.lower()}"
 
