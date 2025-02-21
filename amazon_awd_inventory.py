@@ -16,16 +16,18 @@ logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
 awd_version = '2024-05-09'
+tenants = postgresql.get_tenants()
+
 
 throttle_retry()
 @load_all_pages()
-def list_all_inbound_shipments_summary(marketplace='US', **kwargs):
+def list_all_inbound_shipments_summary(account='Bare Barrel', marketplace='US', **kwargs):
     """
     a generator function to return all pages, obtained by NextToken
     """
 
     inbound_shipments_summary = AmazonWarehousingAndDistribution(
-                                    account=marketplace, 
+                                    account=f'{account}-{marketplace}',
                                     marketplace=Marketplaces[marketplace], 
                                     version=awd_version).list_inbound_shipments(**kwargs)
     return inbound_shipments_summary
@@ -33,18 +35,18 @@ def list_all_inbound_shipments_summary(marketplace='US', **kwargs):
 
 throttle_retry()
 @load_all_pages()
-def list_all_inventory(marketplace='US', **kwargs):
+def list_all_inventory(account='Bare Barrel', marketplace='US', **kwargs):
     """
     a generator function to return all pages, obtained by NextToken
     """
     inventory = AmazonWarehousingAndDistribution(
-                            account=marketplace, 
+                            account=f'{account}-{marketplace}', 
                             marketplace=Marketplaces[marketplace], 
                             version=awd_version).list_inventory(**kwargs)
     return inventory
 
 
-def get_all_inbound_shipments_summary(marketplaces=['UK'], **kwargs):
+def get_all_inbound_shipments_summary(account='Bare Barrel', marketplaces=['US'], **kwargs):
     """
     Combines inbound AWD shipments summary payload
 
@@ -63,8 +65,8 @@ def get_all_inbound_shipments_summary(marketplaces=['UK'], **kwargs):
     shipments_data = pd.DataFrame()
 
     for marketplace in to_list(marketplaces):
-        logger.info(f'Retrieving AWD inbound shipments from {marketplace}')
-        response = list_all_inbound_shipments_summary(marketplace, **kwargs)
+        logger.info(f'Retrieving AWD inbound shipments from {account}-{marketplace}')
+        response = list_all_inbound_shipments_summary(account, marketplace, **kwargs)
 
         for page in response:
             payload = page.payload.get('shipments')
@@ -79,10 +81,12 @@ def get_all_inbound_shipments_summary(marketplaces=['UK'], **kwargs):
             'updatedAt': 'shipment_last_update_date_utc'
     }, inplace=True)
 
+    shipments_data['tenant_id'] = tenants[account]
+
     return shipments_data
 
 
-def get_all_inventory(marketplaces=['US', 'CA', 'UK'], **kwargs):
+def get_all_inventory(account='Bare Barrel', marketplaces=['US', 'CA', 'UK'], **kwargs):
     """
     Combines AWD inventory payload
     Args:
@@ -98,19 +102,20 @@ def get_all_inventory(marketplaces=['US', 'CA', 'UK'], **kwargs):
     inventory_data = pd.DataFrame()
 
     for marketplace in to_list(marketplaces):
-        logger.info(f"Retrieving AWD inventory from {marketplace}")
-        response = list_all_inventory(marketplace, **kwargs)
+        logger.info(f"Retrieving AWD inventory from {account}-{marketplace}")
+        response = list_all_inventory(account, marketplace, **kwargs)
 
         for page in response:
             payload = page.payload.get('inventory')
             data = pd.json_normalize(payload)
             data.insert(0, 'date', dt.date.today())
+            data.insert(1, 'tenant_id', tenants[account])
             inventory_data = pd.concat([inventory_data, data], ignore_index=True)
 
     return inventory_data
 
 
-def get_all_inbound_shipments(marketplaces=['US', 'CA', 'UK'], **kwargs):
+def get_all_inbound_shipments(account='Bare Barrel', marketplaces=['US', 'CA', 'UK'], **kwargs):
     """
     Retrieves and combines detailed inbound shipments data
     Args: 
@@ -125,19 +130,22 @@ def get_all_inbound_shipments(marketplaces=['US', 'CA', 'UK'], **kwargs):
     for marketplace in to_list(marketplaces):
         logger.info(f"Querying all shipment ids in {marketplace}")
         query = f"""
-                SELECT DISTINCT shipment_id FROM awd.inbound_shipments_summary;                """
+                SELECT DISTINCT shipment_id FROM awd.inbound_shipments_summary
+                WHERE tenant_id = '{tenants[account]}';
+                """
         shipment_ids = postgresql.sql_to_dataframe(query)
 
         for row in shipment_ids.values:
             shipment_id = row[0]
             logger.info(f"\tGetting shipment id: {shipment_id}") 
             response = AmazonWarehousingAndDistribution(
-                                            account=marketplace, 
+                                            account=f'{account}-{marketplace}', 
                                             marketplace=Marketplaces[marketplace], 
                                             version=awd_version).get_inbound_shipment(shipmentId=shipment_id, **kwargs)
             payload = response.payload
             data = pd.json_normalize(payload)
             data.insert(0, 'date', dt.date.today())
+            data.insert(1, 'tenant_id', tenants[account])
             inbound_shipments_data = pd.concat([inbound_shipments_data, data], ignore_index=True)
 
             time.sleep(2)
@@ -153,14 +161,14 @@ def get_all_inbound_shipments(marketplaces=['US', 'CA', 'UK'], **kwargs):
     return inbound_shipments_data
 
 
-def update_data(table_name, marketplaces=['US', 'CA', 'UK']):
+def update_data(table_name, account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     """
     Upserts awd inventory for the day.
     """
     table_names = {
-        'awd.inbound_shipments_summary': lambda: get_all_inbound_shipments_summary(marketplaces),
-        'awd.inventory': lambda: get_all_inventory(marketplaces, details='SHOW', maxResults=200),
-        'awd.inbound_shipments': lambda: get_all_inbound_shipments(marketplaces, skuQuantities='SHOW')
+        'awd.inbound_shipments_summary': lambda: get_all_inbound_shipments_summary(account, marketplaces),
+        'awd.inventory': lambda: get_all_inventory(account, marketplaces, details='SHOW', maxResults=200),
+        'awd.inbound_shipments': lambda: get_all_inbound_shipments(account, marketplaces, skuQuantities='SHOW')
     }
     data = table_names[table_name]()
 
@@ -170,9 +178,9 @@ def update_data(table_name, marketplaces=['US', 'CA', 'UK']):
 
 def create_table(table_name, drop_table_if_exists=False):
     table_names = {
-        'awd.inbound_shipments_summary': lambda: get_all_inbound_shipments_summary(['US', 'CA']),
-        'awd.inventory': lambda: get_all_inventory(['US', 'CA'], details='SHOW', maxResults=200),
-        'awd.inbound_shipments': lambda: get_all_inbound_shipments(['US', 'CA'], skuQuantities='SHOW')
+        'awd.inbound_shipments_summary': lambda: get_all_inbound_shipments_summary(marketplaces=['US', 'CA']),
+        'awd.inventory': lambda: get_all_inventory(marketplaces=['US', 'CA'], details='SHOW', maxResults=200),
+        'awd.inbound_shipments': lambda: get_all_inbound_shipments(marketplaces=['US', 'CA'], skuQuantities='SHOW')
     }
     data = table_names[table_name]()
 
@@ -193,4 +201,4 @@ if __name__ == '__main__':
                    'awd.inbound_shipments']
 
     for table_name in table_names:
-        update_data(table_name, ['US']) # AWD is only available in US for now
+        update_data(table_name, marketplaces=['US']) # AWD is only available in US for now
