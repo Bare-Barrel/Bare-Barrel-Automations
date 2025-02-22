@@ -17,14 +17,14 @@ logging.basicConfig(
 )
 
 table_name = 'amazon_advertising_portfolios'
+tenants = postgresql.get_tenants()
 
 
-def list_portfolios(marketplace='US', **kwargs):
-    logging.info(f"Getting portfolios {marketplace}")
+def list_portfolios(account='Bare Barrel', marketplace='US', **kwargs):
+    logging.info(f"Getting portfolios {account}-{marketplace}")
     try:
-        result = Portfolios(account=marketplace, marketplace=Marketplaces[marketplace]).list_portfolios_extended(
-            **kwargs
-        )
+        result = Portfolios(account=f'{account}-{marketplace}', 
+                            marketplace=Marketplaces[marketplace]).list_portfolios_extended(**kwargs)
 
         if result.payload:
             payload = result.payload
@@ -39,13 +39,14 @@ def list_portfolios(marketplace='US', **kwargs):
     return payload
 
 
-def update_data(marketplaces=['US', 'CA', 'UK']):
+def update_data(account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     combined_data = pd.DataFrame()
 
     for marketplace in to_list(marketplaces):
-        response = list_portfolios(marketplace=marketplace)
+        response = list_portfolios(account=account, marketplace=marketplace)
         data = pd.json_normalize(response)
         data['marketplace'] = marketplace
+        data['tenant_id'] = tenants[account]
         combined_data = pd.concat([combined_data, data], ignore_index=True)
 
     logging.info("Upserting data")
@@ -53,7 +54,7 @@ def update_data(marketplaces=['US', 'CA', 'UK']):
 
 
 def create_table(drop_table_if_exists=False):
-    response = list_portfolios('US')
+    response = list_portfolios(marketplace='US')
     data = pd.json_normalize(response)
     data['marketplace'] = 'US'
     logger.info(data)
