@@ -20,6 +20,7 @@ import logger_setup
 logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
+tenants = postgresql.get_tenants()
 table_names = {
         'SPONSORED_BRANDS': {
             'campaigns': 'campaign_v2',
@@ -69,7 +70,7 @@ metrics = {
 }
 
 
-def request_report(ad_product, report_type, report_date, marketplace='US'):
+def request_report(ad_product, report_type, report_date, account='Bare Barrel', marketplace='US'):
     """
     Requests report using SP (version 2). It can only download 1 day at a time.
 
@@ -82,7 +83,7 @@ def request_report(ad_product, report_type, report_date, marketplace='US'):
     Returns:
         response.payload
     """
-    report_name = f"{ad_product} ({marketplace}) {report_type} {report_date}"
+    report_name = f"{ad_product} ({account}-{marketplace}) {report_type} {report_date}"
     logger.info(f"Requesting: {report_name}")
 
     body = {
@@ -111,7 +112,7 @@ def request_report(ad_product, report_type, report_date, marketplace='US'):
     sleep_multiplier = 1
     while True:
         try:
-            Reports = reports[ad_product](account=marketplace, marketplace=Marketplaces[marketplace])
+            Reports = reports[ad_product](account=f'{account}-{marketplace}', marketplace=Marketplaces[marketplace])
             response = Reports.post_report(recordType=report_type, body=json.dumps(body))
             payload = response.payload
             return payload
@@ -122,7 +123,7 @@ def request_report(ad_product, report_type, report_date, marketplace='US'):
             sleep_multiplier += 0.10
 
 
-def download_report(report_id, ad_product, marketplace='US', directory='', report_name=''):
+def download_report(report_id, ad_product, account='Bare Barrel', marketplace='US', directory='', report_name=''):
     """
     Gets a requested report after requesting/posting.
     Downloads to a gzipped file if a save directory is specified. 
@@ -148,7 +149,7 @@ def download_report(report_id, ad_product, marketplace='US', directory='', repor
         'SPONSORED_BRANDS': sb_Reports,
         'SPONSORED_DISPLAY': sd_Reports
     }
-    Reports = reports[ad_product](account=marketplace, marketplace=Marketplaces[marketplace])
+    Reports = reports[ad_product](account=f'{account}-{marketplace}', marketplace=Marketplaces[marketplace])
 
     logger.info(f"Downloading Report {report_name}")
 
@@ -194,7 +195,7 @@ def download_report(report_id, ad_product, marketplace='US', directory='', repor
 
 
 
-def request_download_reports(ad_product, report_type, marketplace, start_date, end_date, root_directory):
+def request_download_reports(ad_product, report_type, account, marketplace, start_date, end_date, root_directory):
     """
     Streamlines the process of downloading reports.
 
@@ -219,8 +220,8 @@ def request_download_reports(ad_product, report_type, marketplace, start_date, e
     current_date = start_date
     while current_date <= end_date:
         try:
-            report_name = f"{ad_product} ({marketplace}) {report_type} {current_date}"
-            response = request_report(ad_product, report_type, current_date, marketplace)
+            report_name = f"{ad_product} ({account}-{marketplace}) {report_type} {current_date}"
+            response = request_report(ad_product, report_type, current_date, account, marketplace)
             report_ids[report_name] = response['reportId']
             current_date += dt.timedelta(days=1)
         except AdvertisingApiTooManyRequestsException as error:
@@ -230,7 +231,7 @@ def request_download_reports(ad_product, report_type, marketplace, start_date, e
     file_paths = []
     # download multiple reports
     for report_name in report_ids:
-        file_path = download_report(report_ids[report_name], ad_product, marketplace, directory, report_name)
+        file_path = download_report(report_ids[report_name], ad_product, account, marketplace, directory, report_name)
         file_paths.append(file_path)
 
     return file_paths
@@ -256,16 +257,17 @@ def combine_data(directory=None, file_paths=[], file_extension='.json.gz'):
     for file_path in file_paths:
         df = pd.read_json(file_path)
 
-        # manually adds marketplace and date
-        match = re.search(r'\((\w*)\).+(20\d\d-\d\d-\d\d)', file_path)
-        df['marketplace'], df['date'] = match[1], match[2]
+        # manually adds accountmarketplace and date
+        match = re.search(r'\((.*)-(\w{2})\).+(20\d\d-\d\d-\d\d)', file_path)
+        df['tenant_id'] = tenants[match[1]]
+        df['marketplace'], df['date'] = match[2], match[3]
 
         combined_data = pd.concat([df, combined_data], ignore_index=True)
 
     return combined_data
 
 
-def update_data(ad_product, report_type, start_date, end_date, marketplaces=['US', 'CA', 'UK']):
+def update_data(ad_product, report_type, start_date, end_date, account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     """
     Adds upsert data step to request_download_reports by
     combining the downloaded files
@@ -274,7 +276,7 @@ def update_data(ad_product, report_type, start_date, end_date, marketplaces=['US
 
     for marketplace in to_list(marketplaces):
         # request & download reports
-        file_paths = request_download_reports(ad_product, report_type, marketplace, start_date, end_date, gzipped_directory)
+        file_paths = request_download_reports(ad_product, report_type, account, marketplace, start_date, end_date, gzipped_directory)
 
         # combine reports
         combined_data = combine_data(file_paths=file_paths)
@@ -288,13 +290,13 @@ def update_data(ad_product, report_type, start_date, end_date, marketplaces=['US
         postgresql.upsert_bulk(table_name, combined_data, file_extension='pandas')
 
 
-def update_all_data(start_date, end_date, ad_products = ['SPONSORED_BRANDS', 'SPONSORED_DISPLAY'], marketplaces=['US', 'CA', 'UK']):
+def update_all_data(start_date, end_date, ad_products = ['SPONSORED_BRANDS', 'SPONSORED_DISPLAY'], account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
 
     for ad_product in to_list(ad_products):
 
         for report_type in metrics[ad_product]:
-            update_data(ad_product, report_type, start_date, end_date, marketplaces)
+            update_data(ad_product, report_type, start_date, end_date, account, marketplaces)
 
 
 def create_table(directory, drop_table_if_exists=False):
