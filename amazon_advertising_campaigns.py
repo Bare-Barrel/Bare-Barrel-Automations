@@ -17,9 +17,10 @@ table_names = {
     'sponsored_brands.campaigns': sb_campaigns,
     'sponsored_display.campaigns':  sd_campaigns
 }
+tenants = postgresql.get_tenants()
 
 @Utils.load_all_pages(throttle_by_seconds=1, next_token_param='nextToken')
-def list_campaigns(table_name, marketplace='US', **kwargs):
+def list_campaigns(table_name, account='Bare Barrel', marketplace='US', **kwargs):
     """
     Lists sponsored products, brands & display campaigns
     https://advertising.amazon.com/API/docs/en-us/guides/sponsored-products/campaigns
@@ -28,13 +29,13 @@ def list_campaigns(table_name, marketplace='US', **kwargs):
     Returns 
         response (ad_api.base.api_response.ApiResponse)
     """
-    logger.info(f"Getting list of {table_name} ({marketplace})")
+    logger.info(f"Getting list of {table_name} {account}-{marketplace}")
     Campaigns = table_names[table_name]
 
-    return Campaigns(account=marketplace, marketplace=Marketplaces[marketplace]).list_campaigns(body=kwargs)
+    return Campaigns(account=f'{account}-{marketplace}', marketplace=Marketplaces[marketplace]).list_campaigns(body=kwargs)
 
 
-def get_data(table_name, marketplaces=['US', 'CA', 'UK'], **kwargs):
+def get_data(table_name, account='Bare Barrel', marketplaces=['US', 'CA', 'UK'], **kwargs):
     """
     Combines campaigns list of campaigns
     Returns
@@ -44,7 +45,7 @@ def get_data(table_name, marketplaces=['US', 'CA', 'UK'], **kwargs):
 
     for marketplace in to_list(marketplaces):
 
-        for page in list_campaigns(table_name, marketplace, **kwargs):
+        for page in list_campaigns(table_name, account, marketplace, **kwargs):
 
             if table_name == 'sponsored_display.campaigns':
                 campaigns = page.payload
@@ -57,14 +58,15 @@ def get_data(table_name, marketplaces=['US', 'CA', 'UK'], **kwargs):
                 continue
             
             df['marketplace'] = marketplace
+            df['tenant_id'] = tenants[account]
             data = pd.concat([data, df], ignore_index=True)
 
     return data
 
 
-def update_data(table_names=table_names.keys(), marketplaces=['US', 'CA', 'UK'], **kwargs):
+def update_data(table_names=table_names.keys(), account='Bare Barrel', marketplaces=['US', 'CA', 'UK'], **kwargs):
     for table_name in table_names:
-        data = get_data(table_name, marketplaces, **kwargs)
+        data = get_data(table_name, account, marketplaces, **kwargs)
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 
