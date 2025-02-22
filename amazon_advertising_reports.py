@@ -20,8 +20,10 @@ import logger_setup
 logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
+tenants = postgresql.get_tenants()
 
-def request_report(ad_product, report_type_id, group_by, start_date, end_date, time_unit='DAILY', marketplace='US'):
+
+def request_report(ad_product, report_type_id, group_by, start_date, end_date, time_unit='DAILY', account='Bare Barrel', marketplace='US'):
     """
     Requests a Sponsored Products report.
     Request the creation of a performance report for all entities of a single type which have
@@ -50,7 +52,7 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
         columns = metrics.replace(' date,', '')
 
     body = {
-        "name": f"{ad_product} ({marketplace}) {report_type_id} {group_by} {start_date} - {end_date}",
+        "name": f"{ad_product} ({account}-{marketplace}) {report_type_id} {group_by} {start_date} - {end_date}",
         "startDate": str(start_date),
         "endDate": str(end_date),
         "configuration":{
@@ -68,13 +70,13 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
             "format": "GZIP_JSON"
         }
     }
-    logger.info(f"Requesting {body['name']}")
+    logger.info(f"Requesting for {account}-{marketplace} \n{body['name']}")
     
     sleep_multiplier = 1
     while True:
         try:
-            response = Reports(account=marketplace, 
-                               marketplace=Marketplaces[marketplace]).post_report(body=body)
+            response = Reports(account=f'{account}-{marketplace}', 
+                                marketplace=Marketplaces[marketplace]).post_report(body=body)
             return response.payload
         
         except AdvertisingApiTooManyRequestsException as e:
@@ -93,12 +95,12 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
 
             # Gets duplicate requested reportId
             report_id = error_message['detail'].split()[-1]
-            response = Reports(account=marketplace, 
-                               marketplace=Marketplaces[marketplace]).get_report(report_id)
+            response = Reports(account=f'{account}-{marketplace}', 
+                                marketplace=Marketplaces[marketplace]).get_report(report_id)
             return response.payload
 
 
-def download_report(report_id, root_directory, report_name, marketplace):
+def download_report(report_id, root_directory, report_name, account, marketplace):
     """
     Once you have made a successful POST call, report generation can take up to three hours.
     You can check the report generation status by using the reportId returned in the initial 
@@ -116,7 +118,7 @@ def download_report(report_id, root_directory, report_name, marketplace):
         file_path (str)
     """
     # regrexing save path
-    match = re.search(r'(SPONSORED_\w+)\s\((\w*)\)\s(\w+)\s(\[.+\])', report_name)
+    match = re.search(r'(SPONSORED_\w+)\s\(.*(\w{2})\)\s(\w+)\s(\[.+\])', report_name)
     ad_product, marketplace, report_type_id, group_by = match[1], match[2], match[3], match[4]
     table_name = table_names[ad_product][report_type_id][group_by]['table_name']
     directory = os.path.join(root_directory, ad_product, table_name, marketplace)
@@ -129,7 +131,8 @@ def download_report(report_id, root_directory, report_name, marketplace):
         logger.info(f"Downloading {report_name}")
 
         try:
-            response = Reports(account=marketplace, marketplace=Marketplaces[marketplace]).get_report(reportId=report_id)
+            response = Reports(account=f'{account}-{marketplace}', 
+                                marketplace=Marketplaces[marketplace]).get_report(reportId=report_id)
             status, url = response.payload['status'], response.payload['url']
             logger.info(f"\tReport status: {status}")
 
@@ -157,13 +160,13 @@ def download_report(report_id, root_directory, report_name, marketplace):
         time.sleep(60)
 
 
-def request_download_reports(ad_product, report_type_id, group_by, start_date, end_date, directory, time_unit='DAILY', marketplace='US'):
+def request_download_reports(ad_product, report_type_id, group_by, start_date, end_date, directory, time_unit='DAILY', account='Bare Barrel', marketplace='US'):
     """Streamlines the process of downloading reports."""
     response = request_report(ad_product, report_type_id, group_by, start_date, end_date, time_unit, marketplace)
 
     report_id, report_name = response['reportId'], response['name']
 
-    file_path = download_report(report_id, directory, report_name, marketplace)
+    file_path = download_report(report_id, directory, report_name, account, marketplace)
 
     return file_path
 
@@ -187,16 +190,18 @@ def combine_data(directory=None, file_paths=[], file_extension='.json.gz'):
     for file_path in file_paths:
         df = pd.read_json(file_path)
 
-        # manually adds marketplace and date
-        match = re.search(r'\((\w*)\).+(20\d\d-\d\d-\d\d)', file_path)
-        df.insert(1, 'marketplace', match[1])
+        # manually adds account, marketplace and date
+        match = re.search(r'\((.*)-(\w{2})\).+(20\d\d-\d\d-\d\d)', file_path)
+        account, marketplace = match[1], match[2]
+        df.insert(1, 'tenant_id', tenants[account])
+        df.insert(2, 'marketplace', marketplace)
 
         combined_data = pd.concat([df, combined_data], ignore_index=True)
 
     return combined_data
 
 
-def update_data(ad_product, report_type_id, start_date, end_date, marketplaces=['US', 'CA', 'UK']):
+def update_data(ad_product, report_type_id, start_date, end_date, account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     """
     Adds upsert data step to request_download_reports by
     combining the downloaded files
@@ -208,7 +213,7 @@ def update_data(ad_product, report_type_id, start_date, end_date, marketplaces=[
 
         for marketplace in to_list(marketplaces):
             response = request_report(ad_product, report_type_id, group_by, 
-                                        start_date, end_date, marketplace=marketplace)
+                                        start_date, end_date, account=account, marketplace=marketplace)
             report_ids[response['name']] = response['reportId']
             time.sleep(10)
     
@@ -217,24 +222,25 @@ def update_data(ad_product, report_type_id, start_date, end_date, marketplaces=[
 
     for report_name in report_ids:        
         # regrexing table name
-        match = re.search(r'(SPONSORED_\w+)\s\((\w*)\)\s(\w+)\s(\[.+\])', report_name)
+        match = re.search(r'(SPONSORED_\w+)\s\(.*(\w{2})\)\s(\w+)\s(\[.+\])', report_name)
         ad_product, marketplace, report_type_id, group_by = match[1], match[2], match[3], match[4]
         table_name = table_names[ad_product][report_type_id][group_by]['table_name']
         table_name = f"{ad_product.lower()}.{table_name}"
 
         # download and save
-        file_path = download_report(report_ids[report_name], gzipped_directory, report_name, marketplace)
+        file_path = download_report(report_ids[report_name], gzipped_directory, report_name, account, marketplace)
 
         # manually ads marketplace
         data = pd.read_json(file_path)
         data['marketplace'] = marketplace
+        data['tenant_id'] = tenants[account]
 
         # upserts data
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 
 def update_all_data(start_date, end_date, ad_products=['SPONSORED_PRODUCTS', 'SPONSORED_BRANDS'],
-                        marketplaces=['US', 'CA', 'UK']):
+                        account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     """
     Download all reports & upserts to database.
     It can only update up to 31 days at a time.
@@ -251,7 +257,7 @@ def update_all_data(start_date, end_date, ad_products=['SPONSORED_PRODUCTS', 'SP
 
                 for marketplace in to_list(marketplaces):
                     response = request_report(ad_product, report_type_id, group_by, 
-                                                start_date, end_date, marketplace=marketplace)
+                                                start_date, end_date, account=account, marketplace=marketplace)
                     report_ids[response['name']] = response['reportId']
                     time.sleep(12)
     
@@ -260,17 +266,18 @@ def update_all_data(start_date, end_date, ad_products=['SPONSORED_PRODUCTS', 'SP
 
     for report_name in report_ids:        
         # regrexing table name
-        match = re.search(r'(SPONSORED_\w+)\s\((\w*)\)\s(\w+)\s(\[.+\])', report_name)
+        match = re.search(r'(SPONSORED_\w+)\s\(.*(\w{2})\)\s(\w+)\s(\[.+\])', report_name)
         ad_product, marketplace, report_type_id, group_by = match[1], match[2], match[3], match[4]
         table_name = table_names[ad_product][report_type_id][group_by]['table_name']
         table_name = f"{ad_product.lower()}.{table_name}"
 
         # download and save
-        file_path = download_report(report_ids[report_name], gzipped_directory, report_name, marketplace)
+        file_path = download_report(report_ids[report_name], gzipped_directory, report_name, account, marketplace)
 
-        # manually ads marketplace
+        # manually ads marketplace and tenant_id
         data = pd.read_json(file_path)
         data['marketplace'] = marketplace
+        data['tenant_id'] = tenants[account]
 
         # upserts data
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
