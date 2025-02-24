@@ -24,6 +24,7 @@ with open('config.json') as f:
     config = json.load(f)
 
 table_name = 'rankings.h10_keyword_tracker'
+tenants = postgresql.get_tenants()
 
 def clean_data(file_path):
     data = pd.read_csv(file_path)
@@ -35,9 +36,10 @@ def clean_data(file_path):
     data['Date Added'] = data['Date Added'].dt.tz_convert('UTC')
     return data
 
-def update_data(file_path):
+def update_data(file_path, account='Bare Barrel'):
     data = clean_data(file_path)
     data = data[data['Organic Rank'].notnull()]
+    data['tenant_id'] = tenants[account]
     postgresql.upsert_bulk(table_name, data, 'pandas')
 
 def create_table(drop_table_if_exists=False):
