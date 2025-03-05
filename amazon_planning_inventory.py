@@ -97,4 +97,5 @@ def create_table(drop_table_if_exists=True):
 
 
 if __name__ == '__main__':
-    update_data()
+    for account in tenants.keys():
+        update_data(account=account)
