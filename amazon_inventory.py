@@ -83,4 +83,5 @@ def create_table(account='Bare Barrel', marketplace='US', drop_table_if_exists=F
 
 
 if __name__ == '__main__':
-    update_data()
+    for account in tenants.keys():
+        update_data(account)
