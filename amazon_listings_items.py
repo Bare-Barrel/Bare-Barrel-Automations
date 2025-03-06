@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 with open('config.json') as f:
     config = json.load(f)
-    seller_id = config['amazon_seller_id']
+    # seller_id = config['amazon_seller_id']
 
 listings_items_schema = 'listings_items'
 table_names = {'summaries': 'summaries', 'attributes': 'attributes', 'issues': 'issues', 'offers': 'offers', 
@@ -41,6 +41,7 @@ def get_all_listings_items(included_data=['summaries', 'attributes', 'issues', '
     Returns
         listings_data (pd.DataFrame)
     """
+    seller_id = config[f'amazon_seller_id-{account}']
     # Creates empty dataframes
     listings_data = {}
     for data_set in included_data:
@@ -74,7 +75,7 @@ def get_all_listings_items(included_data=['summaries', 'attributes', 'issues', '
                         data = payload_to_dataframe(response, get_key=data_set)
                         data['sku'] = sku
                         data['marketplace'] = marketplace
-                        data['date'] = dt.datetime.utcnow().date()
+                        data['date'] = dt.datetime.now(dt.timezone.utc)
                         data['tenant_id'] = tenants[account]
                         data = reposition_columns(data, {'sku':0, 'date': 1, 'marketplace': 2})
                         listings_data[data_set] = pd.concat([data, listings_data[data_set]], ignore_index=True)
@@ -135,4 +136,5 @@ def create_table(tables=table_names.keys(), drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    update_data()
+    for account in tenants.keys():
+        update_data(account=account)
