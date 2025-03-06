@@ -75,7 +75,7 @@ def get_all_listings_items(included_data=['summaries', 'attributes', 'issues', '
                         data = payload_to_dataframe(response, get_key=data_set)
                         data['sku'] = sku
                         data['marketplace'] = marketplace
-                        data['date'] = dt.datetime.now(dt.timezone.utc)
+                        data['date'] = dt.datetime.now(dt.timezone.utc).date()
                         data['tenant_id'] = tenants[account]
                         data = reposition_columns(data, {'sku':0, 'date': 1, 'marketplace': 2})
                         listings_data[data_set] = pd.concat([data, listings_data[data_set]], ignore_index=True)
