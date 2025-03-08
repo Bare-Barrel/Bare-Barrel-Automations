@@ -377,6 +377,7 @@ if __name__ == '__main__':
                   'fulfillment_inbound.inbound_plans_info',
                   'fulfillment_inbound.inbound_plans_shipments'
                    ]
-
-    for table_name in table_names:
-        update_data(table_name)
+    
+    for account in tenants.keys():
+        for table_name in table_names:
+            update_data(table_name, account=account)
