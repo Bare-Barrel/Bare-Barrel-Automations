@@ -90,13 +90,23 @@ def reposition_columns(df, col_positions={}):
     Returns:
         df (pd.DataFrame)
     """
-    cols = [col for col in df.columns if col not in col_positions]
+    if df.empty:
+        logger.warning("Empty dataframe")
+        return df
+    
+    try:
+        cols = [col for col in df.columns if col not in col_positions]
 
-    # Organize the column order
-    for col in col_positions:
-        cols.insert(col_positions[col], col)
+        # Organize the column order
+        for col in col_positions:
+            cols.insert(col_positions[col], col)
 
-    df = df[cols]
+        df = df[cols]
+
+    except KeyError as error:
+        logger.error("Failed repositioning dataframe!")
+        logger.error(error)
+
     return df
 
 
