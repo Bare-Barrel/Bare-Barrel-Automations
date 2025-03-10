@@ -25,6 +25,7 @@ def download_combine_reports(start_date, end_date, account, marketplace,  asin_g
     Requests a `Detail Page Sales and Traffic` report found in business reports in seller central.
     The report provides two granularity reports salesAndTrafficByDate and [salesAndTrafficByAsin, salesAndTrafficByParent, salesAndTrafficByChild].
     Therefore, it needed to be downloaded one day at a time to get the daily metrics at the asin granularity level.
+    It can only download report for the last two years.
 
     Args:
         start_date, end_date (str | dt.date): YYYY-MM-DD
@@ -111,5 +112,6 @@ def create_table(asin_granularity, drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    update_data('PARENT')
-    update_data('CHILD')
+    for account in tenants.keys():
+        update_data('PARENT', account=account)
+        update_data('CHILD', account=account)
