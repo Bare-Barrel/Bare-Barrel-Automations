@@ -29,7 +29,10 @@ table_names = {
     'brand': 'brand_analytics.search_query_performance_brand_view'
 }
 
-async def generate_download(page, marketplace='US', reporting_range='weekly', date_report=None, view='brand', asin=''):
+tenants = postgresql.get_tenants()
+
+
+async def generate_download(page, account='Bare Barrel', marketplace='US', reporting_range='weekly', date_report=None, view='brand', asin=''):
     """
     Downloads Search Query Performance Reports.
 
@@ -44,7 +47,7 @@ async def generate_download(page, marketplace='US', reporting_range='weekly', da
     Return:
     - bool
     """
-    logger.info(f"@SearchQueryPerformance Querying {view} {asin} ({marketplace}) {date_report}")
+    logger.info(f"@SearchQueryPerformance Querying {view} {asin} ({account}-{marketplace}) {date_report}")
     
     country_id = 'GB' if marketplace == 'UK' else marketplace
 
@@ -52,7 +55,7 @@ async def generate_download(page, marketplace='US', reporting_range='weekly', da
     sqp_url = {
                 "brand": "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-brands-view" + 
                             "&brand={}&reporting-range={}&{}={}&country-id={}".format(
-                            config['amazon_brand_id'], reporting_range, reporting_range_formats[reporting_range], 
+                            config['amazon_brand_id'][account], reporting_range, reporting_range_formats[reporting_range], 
                             date_report, country_id.lower()
                             ),
                 "asin": "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-asin-view" +
@@ -116,7 +119,7 @@ async def generate_download(page, marketplace='US', reporting_range='weekly', da
     return True
 
 
-async def download_reports(page=None, n_downloads=100):
+async def download_reports(page=None, n_downloads=100, account='Bare Barrel'):
     """
     Waits for all downloaded reports to be ready to download and then downloads all files in the download manager.
     
@@ -132,7 +135,7 @@ async def download_reports(page=None, n_downloads=100):
                                                                     headless=config['playwright_headless'], default_timeout=60000)
         await login_amazon(page)
 
-    await page.goto('https://sellercentral.amazon.com/brand-analytics/download-manager')
+    await page.goto('https://sellercentral.amazon.com/brand-analytics/download-manager') # ?brand_id param doesn't work
     await asyncio.sleep(10)
 
     # waits for progress to be completed
@@ -168,7 +171,6 @@ async def download_reports(page=None, n_downloads=100):
             csv_path = await download.path() # random guid in a temp folder
             filename = download.suggested_filename # US_Search_Query_Performance_ASIN_View_Week_2022_12_31.csv
             marketplace = filename.split('_')[0]
-            view = 'Brand'
 
             # retrieves asin to filename if it exists
             if 'ASIN' in filename.upper():
@@ -180,7 +182,7 @@ async def download_reports(page=None, n_downloads=100):
 
             # copies file to folder
             logger.info(f"Copying {filename} to SQP Downloads Folder")
-            saved_filepath = os.path.join(os.getcwd(), 'SQP Downloads', view, marketplace, f'{filename}')
+            saved_filepath = os.path.join(os.getcwd(), 'SQP Downloads', account, view, marketplace, f'{filename}')
             os.makedirs(os.path.dirname(saved_filepath), exist_ok=True)
             shutil.copyfile(csv_path, saved_filepath)
             downloaded_filepaths.append(saved_filepath)
@@ -265,7 +267,8 @@ def combine_data(directory=None, file_paths=[], file_extension='.csv'):
 
 
 
-async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA', 'UK'], date_reports=[], view=['brand', 'asin'], headless=config['playwright_headless']) -> None:
+async def scrape_sqp(playwright: Playwright, account='Bare Barrel', marketplaces=['US', 'CA', 'UK'], 
+                     date_reports=[], view=['brand', 'asin'], headless=config['playwright_headless']) -> None:
     """
     Download weekly Search Query Performance per ASIN for each marketplace.
     Then inserts data to search_query_performance
@@ -293,11 +296,12 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA', 'UK'], da
     async def download_and_upsert(page, n_downloads):
         # download reports via `Downloads Manager`
         logger.info(f"@SearchQueryPerformance Downloading {n_downloads} reports")
-        downloaded_filepaths = await download_reports(page, n_downloads=downloads)
+        downloaded_filepaths = await download_reports(page, n_downloads=downloads, account=account)
 
         # inserts to amazon db
         table_name = table_names[view]
         data = combine_data(file_paths=downloaded_filepaths)
+        data['tenant_id'] = tenants[account]
         postgresql.upsert_bulk(table_name, data, 'pandas')
 
         # resets download counter
@@ -310,21 +314,26 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA', 'UK'], da
 
             for date_report in date_reports:
                 # gets all active asins
-                logger.info(f"Getting all active ASINs in {marketplace} {date_report}")
+                logger.info(f"Getting all active ASINs in {account}-{marketplace} {date_report}")
 
                 with postgresql.setup_cursor() as cur:
                     cur.execute(f"""SELECT DISTINCT asin FROM listings_items.summaries 
-                                        WHERE status @> ARRAY['DISCOVERABLE', 'BUYABLE'] AND marketplace = '{marketplace}'
-                                                AND date >= '{date_report}'::DATE - INTERVAL '6 days' AND date <= '{date_report}'::DATE
-                                                AND asin NOT IN (SELECT DISTINCT ASIN FROM {table_names['asin']} 
-                                                                    WHERE marketplace = '{marketplace}' AND reporting_date = '{date_report}');""")
+                                        WHERE status @> ARRAY['DISCOVERABLE', 'BUYABLE'] 
+                                            AND marketplace = '{marketplace}'
+                                            AND tenant_id = {tenants[account]}
+                                            AND date >= '{date_report}'::DATE - INTERVAL '6 days' 
+                                            AND date <= '{date_report}'::DATE
+                                            AND asin NOT IN (SELECT DISTINCT ASIN FROM {table_names['asin']} 
+                                                                    WHERE marketplace = '{marketplace}'
+                                                                        AND tenant_id = {tenants[account]}
+                                                                        AND reporting_date = '{date_report}');""")
                     active_asins = [asin['asin'] for asin in cur.fetchall()]
 
                 logger.info(f"\t{len(active_asins)} ASINs are discoverable")
 
                 if active_asins:
                     for asin in active_asins:
-                        downloads_generated = await generate_download(page, marketplace, date_report=date_report, view=view, asin=asin)
+                        downloads_generated = await generate_download(page, account, marketplace, date_report=date_report, view=view, asin=asin)
                         downloads += 1 if downloads_generated else 0
 
                         if downloads == 50:
@@ -334,13 +343,15 @@ async def scrape_sqp(playwright: Playwright, marketplaces=['US', 'CA', 'UK'], da
             with postgresql.setup_cursor() as cur:
                 cur.execute(f"""SELECT DISTINCT reporting_date FROM brand_analytics.search_query_performance_brand_view 
                                     WHERE marketplace = '{marketplace}'
-                                        AND reporting_date >= '{min(date_reports)}'::DATE AND reporting_date <= '{max(date_reports)}'::DATE;""")
+                                        AND tenant_id = {tenants[account]}
+                                        AND reporting_date >= '{min(date_reports)}'::DATE 
+                                        AND reporting_date <= '{max(date_reports)}'::DATE;""")
                 available_date_reports = [reporting_date['reporting_date'] for reporting_date in cur.fetchall()]
                 date_reports_to_download = [date_report for date_report in date_reports if date_report not in available_date_reports]
 
             for date_report in date_reports_to_download:
 
-                downloads += await generate_download(page, marketplace, date_report=date_report, view=view)
+                downloads += await generate_download(page, account, marketplace, date_report=date_report, view=view)
                 # downloads += 1 if downloads_generated else 0
 
                 if downloads == 50:
@@ -383,18 +394,21 @@ async def main():
     """
     Updates ASIN & Brand view last two weeks of data
     """
+    # for account in tenants.keys():
+    account = 'Rymora'
     async with async_playwright() as playwright:
         last_week = dt.date.today() - dt.timedelta(weeks=1)
         end_date = get_day_of_week(last_week, 'Saturday')
         start_date = end_date - dt.timedelta(weeks=2)
+        start_date = dt.date(2023,11,18)
 
         saturdays = []
         while start_date <= end_date:
             saturdays.append(start_date)
             start_date += dt.timedelta(days=7)
 
-        for view in ['asin', 'brand']:
-            task = asyncio.create_task(scrape_sqp(playwright, marketplaces=['US', 'CA', 'UK'], date_reports=saturdays, view=view))
+        for view in ['brand']:
+            task = asyncio.create_task(scrape_sqp(playwright, account, marketplaces=['US', 'CA', 'UK'], date_reports=saturdays, view=view))
             await task
 
 
