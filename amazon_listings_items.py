@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 with open('config.json') as f:
     config = json.load(f)
-    # seller_id = config['amazon_seller_id']
+
 
 listings_items_schema = 'listings_items'
 table_names = {'summaries': 'summaries', 'attributes': 'attributes', 'issues': 'issues', 'offers': 'offers', 
@@ -41,7 +41,6 @@ def get_all_listings_items(included_data=['summaries', 'attributes', 'issues', '
     Returns
         listings_data (pd.DataFrame)
     """
-    seller_id = config[f'amazon_seller_id-{account}']
     # Creates empty dataframes
     listings_data = {}
     for data_set in included_data:
@@ -49,6 +48,8 @@ def get_all_listings_items(included_data=['summaries', 'attributes', 'issues', '
 
     for marketplace in to_list(marketplaces):
         logger.info(f"Getting listing items {str(included_data)} in {account}-{marketplace}")
+
+        seller_id = config['amazon_seller_id'][account][marketplace]
 
         # Retrieves all skus per marketplace
         with postgresql.setup_cursor() as cur:
@@ -65,7 +66,7 @@ def get_all_listings_items(included_data=['summaries', 'attributes', 'issues', '
                 try:
                     response = ListingsItems(account=f'{account}-{marketplace}', 
                                             marketplace=Marketplaces[marketplace]).get_listings_item(
-                                                                                    seller_id[marketplace], 
+                                                                                    seller_id,
                                                                                     sku, 
                                                                                     includedData=','.join(to_list(included_data))
                                                                                 )
