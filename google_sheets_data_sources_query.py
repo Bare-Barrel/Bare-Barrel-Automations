@@ -1,9 +1,11 @@
 worksheet_queries = {
     'FBA-Inv+': '''select * from inventory.fba_planning_inventory
+                    where tenant_id = 1
                     order by snapshot_date desc, marketplace, sku;''',
 
     'FBA-Inv': '''select * from inventory.fba
                     where last_updated_time IS NOT NULL
+                        and tenant_id = 1
                     order by date desc, marketplace asc, asin asc;''',
 
     'Bus-RP': '''select date, parent_asin, marketplace, traffic_by_asin_mobile_app_sessions, traffic_by_asin_mobile_app_sessions_b2b, traffic_by_asin_browser_sessions,
@@ -19,6 +21,7 @@ worksheet_queries = {
                     (traffic_by_asin_unit_session_percentage/100) traffic_by_asin_unit_session_percentage, (traffic_by_asin_unit_session_percentage_b2b/100) traffic_by_asin_unit_session_percentage_b2b,
                     sales_by_asin_ordered_product_sales_amount, sales_by_asin_ordered_product_sales_b2b_amount, sales_by_asin_total_order_items, sales_by_asin_total_order_items_b2b
                 from business_reports.detail_page_sales_and_traffic_parent
+                where tenant_id = 1
                 order by date asc, marketplace asc, parent_asin;''',
 
     'SP-US': '''-- API data source. (04-02-2023 to present)
@@ -46,6 +49,7 @@ worksheet_queries = {
                 left join amazon_advertising_portfolios t3
                     on t2.portfolio_id = t3.portfolio_id
                 where t1.marketplace = 'US'
+                    and t1.tenant_id = 1
                 group by t1.marketplace, portfolio_name, t1.date, currency
                 having sum(t1.impressions) > 0
 
@@ -68,6 +72,7 @@ worksheet_queries = {
                     sum("7_day_total_sales") sales_7d
                 from sponsored_products.campaign_console
                 where marketplace = 'US' and date < '04-02-2023'
+                    and tenant_id = 1
                 group by marketplace, portfolio_name, date, currency
                 order by date asc, marketplace desc, portfolio_name;''',
 
@@ -96,6 +101,7 @@ worksheet_queries = {
                 left join amazon_advertising_portfolios t3
                     on t2.portfolio_id = t3.portfolio_id
                 where t1.marketplace = 'CA'
+                    and t1.tenant_id = 1
                 group by t1.marketplace, portfolio_name, t1.date, currency;''',
 
     'SP-UK': '''-- API data source
@@ -123,6 +129,7 @@ worksheet_queries = {
                 left join amazon_advertising_portfolios t3
                     on t2.portfolio_id = t3.portfolio_id
                 where t1.marketplace = 'UK'
+                    and t1.tenant_id = 1
                 group by t1.marketplace, portfolio_name, t1.date, currency;''',
 
     'SB-US': '''-- API Data source v2 (2023-06-11 - present)
@@ -137,7 +144,9 @@ worksheet_queries = {
                 from sponsored_brands.campaign_v2 t1
                 left join sponsored_brands.campaigns t2 on t1.campaign_id = t2.campaign_id
                 left join amazon_advertising_portfolios t3 on t2.portfolio_id = t3.portfolio_id
-                where t1.campaign_status in ('enabled', 'paused') and t1.marketplace = 'US'
+                where t1.campaign_status in ('enabled', 'paused') 
+                    and t1.marketplace = 'US'
+                    and t1.tenant_id = 1
                 group by t1.date, t3.name, t1.marketplace, t1.currency
 
                 UNION
@@ -152,7 +161,9 @@ worksheet_queries = {
                 currency,
                 sum(spend) total_cost, sum("14_day_total_units") attributed_units_ordered_new_to_brand_14d, sum(clicks) total_clicks, sum(impressions) total_impressions, sum("14_day_total_sales") attributed_sales_14d
                 from sponsored_brands.campaign_console
-                where date <= '2023-06-10' and marketplace = 'US'
+                where date <= '2023-06-10' 
+                    and marketplace = 'US'
+                    and tenant_id = 1
                 group by date, portfolio_name, marketplace, currency
                 order by date asc, marketplace asc, portfolio_name asc;''',
 
@@ -168,7 +179,9 @@ worksheet_queries = {
                 from sponsored_brands.campaign_v2 t1
                 left join sponsored_brands.campaigns t2 on t1.campaign_id = t2.campaign_id
                 left join amazon_advertising_portfolios t3 on t2.portfolio_id = t3.portfolio_id
-                where t1.campaign_status in ('enabled', 'paused') and t1.marketplace = 'CA'
+                where t1.campaign_status in ('enabled', 'paused') 
+                    and t1.marketplace = 'CA'
+                    and t1.tenant_id = 1
                 group by t1.date, t3.name, t1.marketplace, t1.currency
                 order by t1.date asc, t1.marketplace asc, portfolio_name asc;''',
 
@@ -184,7 +197,9 @@ worksheet_queries = {
                 from sponsored_brands.campaign_v2 t1
                 left join sponsored_brands.campaigns t2 on t1.campaign_id = t2.campaign_id
                 left join amazon_advertising_portfolios t3 on t2.portfolio_id = t3.portfolio_id
-                where t1.campaign_status in ('enabled', 'paused') and t1.marketplace = 'UK'
+                where t1.campaign_status in ('enabled', 'paused')
+                    and t1.marketplace = 'UK'
+                    and t1.tenant_id = 1
                 group by t1.date, t3.name, t1.marketplace, t1.currency
                 order by t1.date asc, t1.marketplace asc, portfolio_name asc;''',
 
@@ -199,6 +214,7 @@ worksheet_queries = {
             from sponsored_display.campaign_v2 t1
             left join sponsored_display.campaigns t2 on t1.campaign_id = t2.campaign_id
             left join amazon_advertising_portfolios t3 on t2.portfolio_id = t3.portfolio_id
+            where t1.tenant_id = 1
             group by t1.date, t3.name, t1.marketplace, t1.currency
 
             UNION
@@ -213,6 +229,7 @@ worksheet_queries = {
             sum(spend) total_cost, sum("14_day_total_units") attributed_units_ordered_7d, sum(clicks) total_clicks, sum(impressions) total_impressions
             from sponsored_display.campaign_console
             where date <= '2023-06-10'
+                and tenant_id = 1
             group by date, portfolio_name , marketplace, currency
             order by date asc, portfolio_name asc, marketplace asc;''',
 
@@ -283,6 +300,7 @@ worksheet_queries = {
                                 order by asin, marketplace, date desc) as t3 on t2.asin = t3.asin 
                                                                         AND t2.marketplace = t3.marketplace 
                     WHERE t1.marketplace = 'US'
+                        and t1.tenant_id = 1
                     order by purchase_date asc;''',
 
     'Orders-CA': '''select 
@@ -352,6 +370,7 @@ worksheet_queries = {
                                 order by asin, marketplace, date desc) as t3 on t2.asin = t3.asin 
                                                                         AND t2.marketplace = t3.marketplace 
                     WHERE t1.marketplace = 'CA'
+                        and t1.tenant_id = 1
                     order by purchase_date asc;''',
 
     'Orders-UK': '''select 
@@ -421,6 +440,7 @@ worksheet_queries = {
                                 order by asin, marketplace, date desc) as t3 on t2.asin = t3.asin 
                                                                         AND t2.marketplace = t3.marketplace 
                     WHERE t1.marketplace = 'UK'
+                        and t1.tenant_id = 1
                     order by purchase_date asc;''',
 
     "Shipments": '''(
@@ -456,6 +476,7 @@ worksheet_queries = {
                                                 last_updated_at
                                             from fulfillment_inbound.inbound_plans_info) t4
                                         on t3.shipment_id = t4.shipment_id
+                        where t1.tenant_id = 1
 
                         UNION
 
@@ -484,6 +505,7 @@ worksheet_queries = {
                                             group by order_id) t2
                                         on t1.order_id = t2.order_id
                         where t1.date = (select max(date) from awd.inbound_shipments)
+                            and t1.tenant_id = 1
                     )
                     order by created desc nulls last, "shipment id", "destination country" desc nulls last;'''
 }   
