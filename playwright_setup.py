@@ -41,7 +41,7 @@ async def setup_playwright(storage_state=None, headless=False, default_timeout=N
     return page, browser, context
 
 
-async def login_amazon(page):
+async def login_amazon(page, account='Bare Barrel'):
     """
     Logs in to Amazon Sellercentral using the credentials stored in `config.json'
 
@@ -51,7 +51,7 @@ async def login_amazon(page):
     Returns:
     - None
     """
-    logger.info("Logging in to Amazon Sellercentral")
+    logger.info(f"Logging in to Amazon Sellercentral")
 
     await page.goto("https://sellercentral.amazon.com")
     await asyncio.sleep(5)
@@ -101,6 +101,17 @@ async def login_amazon(page):
         if await checkbox.is_visible():
             await checkbox.click()
 
+    logger.info("\tLogin Sucessful")
+
+    # Parameters for selecting account
+    params = {
+        "Bare Barrel": "?mons_sel_mkid=amzn1.mp.o.ATVPDKIKX0DER&mons_sel_dir_mcid=amzn1.merchant.d.ADQBCWP5YIRJTEH4DNBUN7MD4A7Q&mons_sel_dir_paid=amzn1.pa.d.AC3MXOJCRYIFUPBFBKVVNNFGPWIA&ignore_selection_changed=true",
+        "Rymora": "?mons_sel_dir_mcid=amzn1.merchant.d.AD4TZW65NWB7A474I7YLXVUEJE7A&mons_sel_mkid=amzn1.mp.o.ATVPDKIKX0DER&mons_sel_dir_paid=amzn1.pa.d.AASAAFP3UIBK2Z23PIYPF57OUMLQ&ignore_selection_changed=true"
+    }
+
+    logger.info(f"Going to {account}'s Home Page")
+    await page.goto("https://sellercentral.amazon.com/home" + params[account])
+
     await asyncio.sleep(10)
     return
 
@@ -124,3 +135,8 @@ async def login_scale_insights(page):
 
     await asyncio.sleep(10)
     return
+
+
+if __name__ == '__main__':
+    page, browser, context = setup_playwright()
+    login_amazon(page)

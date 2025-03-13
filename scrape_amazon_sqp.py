@@ -133,7 +133,7 @@ async def download_reports(page=None, n_downloads=100, account='Bare Barrel'):
     if not page:
         page, browser, context = await setup_playwright(storage_state=storage_sellercentral, 
                                                                     headless=config['playwright_headless'], default_timeout=60000)
-        await login_amazon(page)
+        await login_amazon(page, account)
 
     await page.goto('https://sellercentral.amazon.com/brand-analytics/download-manager') # ?brand_id param doesn't work
     await asyncio.sleep(10)
@@ -173,6 +173,7 @@ async def download_reports(page=None, n_downloads=100, account='Bare Barrel'):
             marketplace = filename.split('_')[0]
 
             # retrieves asin to filename if it exists
+            view = 'BRAND'
             if 'ASIN' in filename.upper():
                 view = 'ASIN'
                 metadata = pd.read_csv(csv_path, nrows=0)
@@ -286,7 +287,7 @@ async def scrape_sqp(playwright: Playwright, account='Bare Barrel', marketplaces
 
     page, browser, context = await setup_playwright(storage_state=storage_sellercentral, 
                                                                     headless=headless, default_timeout=180000)
-    await login_amazon(page)
+    await login_amazon(page, account)
 
     # downloads for each marketplace, date_report, asin
     downloads = 0
@@ -336,7 +337,7 @@ async def scrape_sqp(playwright: Playwright, account='Bare Barrel', marketplaces
                         downloads_generated = await generate_download(page, account, marketplace, date_report=date_report, view=view, asin=asin)
                         downloads += 1 if downloads_generated else 0
 
-                        if downloads == 50:
+                        if downloads == 100:
                             downloads = await download_and_upsert(page, downloads) # resets download counter to 0
 
         elif view == 'brand':
@@ -354,7 +355,7 @@ async def scrape_sqp(playwright: Playwright, account='Bare Barrel', marketplaces
                 downloads += await generate_download(page, account, marketplace, date_report=date_report, view=view)
                 # downloads += 1 if downloads_generated else 0
 
-                if downloads == 50:
+                if downloads == 100:
                         downloads = await download_and_upsert(page, downloads) # resets download counter to 0
 
 
@@ -400,7 +401,7 @@ async def main():
         last_week = dt.date.today() - dt.timedelta(weeks=1)
         end_date = get_day_of_week(last_week, 'Saturday')
         start_date = end_date - dt.timedelta(weeks=2)
-        start_date = dt.date(2023,11,18)
+        start_date = dt.date(2024,11,2) # 2024-11-02 in US
 
         saturdays = []
         while start_date <= end_date:
