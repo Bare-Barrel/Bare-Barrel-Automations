@@ -18,8 +18,8 @@ orders_table = 'orders.amazon_orders'
 order_items_table = 'orders.amazon_order_items'
 tenants = postgresql.get_tenants()
 
-@throttle_retry()
 @load_all_pages()
+@throttle_retry(tries=50)
 def load_all_orders(account='Bare Barrel', marketplace='US', **kwargs):
     """
     a generator function to return all pages, obtained by NextToken
@@ -39,7 +39,8 @@ def get_orders_items(order_ids=[], account='Bare Barrel', marketplace='US'):
 
             try:
                 logger.info(f"Getting Order ID: {order_id}")
-                order_items = Orders(account=f'{account}-{marketplace}', marketplace=Marketplaces[marketplace]).get_order_items(order_id)
+                order_items = Orders(account=f'{account}-{marketplace}', 
+                                     marketplace=Marketplaces[marketplace]).get_order_items(order_id)
                 data = order_items.payload.get('OrderItems')
                 data = pd.json_normalize(data, sep='_') 
                 data['amazon_order_id'] = order_id
@@ -64,18 +65,21 @@ def update_data(account='Bare Barrel', marketplaces=['US', 'CA', 'UK'], **kwargs
         logger.info(f"Getting Orders from {account}-{marketplace}. . .")
 
         # gets latest orders
-        with postgresql.setup_cursor() as cur:
-            cur.execute(f"""SELECT MAX(last_update_date)::TIMESTAMP FROM {orders_table} 
-                            WHERE marketplace = '{marketplace}'
-                                AND tenant_id = '{tenants[account]}';""")
-            last_update_date = cur.fetchone()['max'].isoformat()
-            if not last_update_date:
-                last_update_date = dt.date(2022,1,1)
+        if 'LastUpdatedAfter' not in kwargs:
+            with postgresql.setup_cursor() as cur:
+                cur.execute(f"""SELECT MAX(last_update_date)::TIMESTAMP FROM {orders_table} 
+                                WHERE marketplace = '{marketplace}'
+                                    AND tenant_id = '{tenants[account]}';""")
+                last_update_date = cur.fetchone()['max']
+                kwargs['LastUpdatedAfter'] = last_update_date.isoformat()
+
+                if not last_update_date:
+                    kwargs['LastUpdatedAfter'] = dt.date(2020,1,1).isoformat()
 
         orders_data = pd.DataFrame()
         total_orders = 0
   
-        for page in load_all_orders(account, marketplace, LastUpdatedAfter=last_update_date, **kwargs):    # datetime.utcnow() - timedelta(days=290)).isoformat()
+        for page in load_all_orders(account, marketplace, **kwargs):    # datetime.utcnow() - timedelta(days=290)).isoformat()
             orders_payload = page.payload.get('Orders')
             data = pd.json_normalize(orders_payload, sep='_')
             data['marketplace'] = marketplace
@@ -131,25 +135,29 @@ def create_order_items_table(drop_table_if_exists=False):
 
 def update_missing_order_items(account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     for marketplace in to_list(marketplaces):
+        logger.info(f"Searching for missing order items data for {account}-{marketplace}. . .")
         while True:
             with postgresql.setup_cursor() as cur:
                 # retrieves first 50 orders for table creation
-                cur.execute(f"""SELECT amazon_order_id FROM {orders_table}
-                                WHERE amazon_order_id NOT IN (SELECT amazon_order_id FROM {order_items_table})
+                cur.execute(f"""SELECT amazon_order_id FROM {orders_table} t1
+                                WHERE NOT EXISTS (SELECT amazon_order_id 
+                                                    FROM {order_items_table} t2
+                                                    WHERE t1.amazon_order_id = t2.amazon_order_id)
                                         AND marketplace = '{marketplace}' and tenant_id = {tenants[account]}
                                         ORDER BY purchase_date DESC LIMIT 100;""")
 
                 order_ids = [order['amazon_order_id'] for order in cur.fetchall()]
 
             if not order_ids:
-                logger.info(f"No Missing Amazon Order IDs in orders.amazon_order_items ({marketplace})")
+                logger.info(f"\tNo Missing Amazon Order IDs in orders.amazon_order_items")
                 break
 
-            data = get_orders_items(order_ids, account)
+            data = get_orders_items(order_ids, account, marketplace)
             
             postgresql.upsert_bulk(order_items_table, data, file_extension='pandas')
 
 
 if __name__ == '__main__':
-    update_data()
-    update_missing_order_items()
+    for account in tenants.keys():
+        update_data(account)
+        update_missing_order_items(account)
