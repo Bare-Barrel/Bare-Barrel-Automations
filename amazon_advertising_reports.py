@@ -162,7 +162,7 @@ def download_report(report_id, root_directory, report_name, account, marketplace
 
 def request_download_reports(ad_product, report_type_id, group_by, start_date, end_date, directory, time_unit='DAILY', account='Bare Barrel', marketplace='US'):
     """Streamlines the process of downloading reports."""
-    response = request_report(ad_product, report_type_id, group_by, start_date, end_date, time_unit, marketplace)
+    response = request_report(ad_product, report_type_id, group_by, start_date, end_date, time_unit, account, marketplace)
 
     report_id, report_name = response['reportId'], response['name']
 
@@ -235,6 +235,13 @@ def update_data(ad_product, report_type_id, start_date, end_date, account='Bare 
         data['marketplace'] = marketplace
         data['tenant_id'] = tenants[account]
 
+        # removes null
+        if 'ad_group_id' in data.columns:
+            data.fillna({"ad_group_id": 0}, inplace=True)
+
+        if 'campaign_id' in data.columns:
+            data.fillna({"campaign_id": 0}, inplace=True)
+
         # upserts data
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
@@ -247,19 +254,35 @@ def update_all_data(start_date, end_date, ad_products=['SPONSORED_PRODUCTS', 'SP
 
     Note: SD tables aren't created yet
     """
+    max_date_range = 31
+    data_retention = {
+        'SPONSORED_PRODUCTS': 95,
+        'SPONSORED_BRANDS': 60,
+        'SPONSORED_DISPLAY': 65
+    }
+
     report_ids = {}
     # requests reports
     for ad_product in to_list(ad_products):
+        data_retention_start_date = dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=data_retention[ad_product])
 
         for report_type_id in table_names[ad_product]:
 
             for group_by in table_names[ad_product][report_type_id]:
 
                 for marketplace in to_list(marketplaces):
-                    response = request_report(ad_product, report_type_id, group_by, 
-                                                start_date, end_date, account=account, marketplace=marketplace)
-                    report_ids[response['name']] = response['reportId']
-                    time.sleep(12)
+                    current_start_date = start_date if start_date >= data_retention_start_date else data_retention_start_date
+                    current_end_date = min(end_date, current_start_date + dt.timedelta(days=max_date_range))
+
+                    while current_start_date < end_date:
+                        response = request_report(ad_product, report_type_id, group_by, 
+                                                    current_start_date, current_end_date, account=account, marketplace=marketplace)
+                        report_ids[response['name']] = response['reportId']
+        
+                        current_start_date = current_end_date + dt.timedelta(days=1)
+                        current_end_date = min(end_date, current_end_date + dt.timedelta(days=max_date_range))
+                        time.sleep(12)
+
     
     # download reports
     gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
@@ -279,8 +302,15 @@ def update_all_data(start_date, end_date, ad_products=['SPONSORED_PRODUCTS', 'SP
         data['marketplace'] = marketplace
         data['tenant_id'] = tenants[account]
 
+        # removes null
+        if 'ad_group_id' in data.columns:
+            data.fillna({"ad_group_id": 0}, inplace=True)
+
+        if 'campaign_id' in data.columns:
+            data.fillna({"campaign_id": 0}, inplace=True)
+
         # upserts data
-        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+        # postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 
 def create_table(directory, drop_table_if_exists=False):
@@ -321,30 +351,31 @@ if __name__ == '__main__':
     day = datetime_now.day
     hour = datetime_now.hour
 
-    # Updates 90 days at the start of the month
-    if day == 1 and hour == 1:
-        logger.info("-UPDATING SP LAST 90 DAYS-")
-        start_date, end_date = dt.date.today() - dt.timedelta(days=90), dt.date.today() - dt.timedelta(days=60)
-        update_all_data(start_date, end_date, 'SPONSORED_PRODUCTS')
-        logger.info("-UPDATING SP & SB LAST 60 DAYS-")
-        update_all_data(start_date + dt.timedelta(days=30), end_date + dt.timedelta(days=30))
-        logger.info("-UPDATING SP & SB LAST 30 DAYS-")
-        update_all_data(start_date + dt.timedelta(days=60), dt.date.today())
+    for account in tenants.keys():
+        # Updates 90 days at the start of the month
+        if day == 1 and hour == 1:
+            logger.info("-UPDATING SP LAST 90 DAYS-")
+            start_date, end_date = dt.date.today() - dt.timedelta(days=90), dt.date.today() - dt.timedelta(days=60)
+            update_all_data(start_date, end_date, 'SPONSORED_PRODUCTS', account=account)
+            logger.info("-UPDATING SP & SB LAST 60 DAYS-")
+            update_all_data(start_date + dt.timedelta(days=30), end_date + dt.timedelta(days=30), account=account)
+            logger.info("-UPDATING SP & SB LAST 30 DAYS-")
+            update_all_data(start_date + dt.timedelta(days=60), dt.date.today(), account=account)
 
-    # Updates last 30 days at the middle of the month
-    elif day == 15 and hour == 1:
-        logger.info("-UPDATING SP & SB LAST 30 DAYS-")
-        start_date, end_date = dt.date.today() - dt.timedelta(days=30), dt.date.today()
-        update_all_data(start_date, end_date) 
+        # Updates last 30 days at the middle of the month
+        elif day == 15 and hour == 1:
+            logger.info("-UPDATING SP & SB LAST 30 DAYS-")
+            start_date, end_date = dt.date.today() - dt.timedelta(days=30), dt.date.today()
+            update_all_data(start_date, end_date, account=account) 
 
-    # Updates last 7 days daily
-    elif day not in (1, 15) and hour == 1:
-        logger.info("-UPDATING SP & SB LAST 7 DAYS-")
-        start_date, end_date = dt.date.today() - dt.timedelta(days=7), dt.date.today()
-        update_all_data(start_date, end_date)
+        # Updates last 7 days daily
+        elif day not in (1, 15) and hour == 1:
+            logger.info("-UPDATING SP & SB LAST 7 DAYS-")
+            start_date, end_date = dt.date.today() - dt.timedelta(days=7), dt.date.today()
+            update_all_data(start_date, end_date, account=account)
 
-    # Updates reports in `campaign` every hour
-    elif day not in (1, 15) and hour != 1:
-        logger.info("-UPDATING SP Campaigns LAST 2 DAYS-")
-        start_date, end_date = dt.date.today() - dt.timedelta(days=1), dt.date.today()
-        update_data('SPONSORED_PRODUCTS', 'spCampaigns', start_date, end_date)
+        # Updates reports in `campaign` every hour
+        elif day not in (1, 15) and hour != 1:
+            logger.info("-UPDATING SP Campaigns LAST 2 DAYS-")
+            start_date, end_date = dt.date.today() - dt.timedelta(days=1), dt.date.today()
+            update_data('SPONSORED_PRODUCTS', 'spCampaigns', start_date, end_date, account=account)
