@@ -30,8 +30,10 @@ def list_portfolios(account='Bare Barrel', marketplace='US', **kwargs):
             payload = result.payload
             for portfolio in payload:
                 logging.info(portfolio)
+
         else:
             logging.info(result)
+            payload = {}
 
     except AdvertisingApiException as error:
         logging.error(error)
@@ -45,9 +47,11 @@ def update_data(account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     for marketplace in to_list(marketplaces):
         response = list_portfolios(account=account, marketplace=marketplace)
         data = pd.json_normalize(response)
-        data['marketplace'] = marketplace
-        data['tenant_id'] = tenants[account]
-        combined_data = pd.concat([combined_data, data], ignore_index=True)
+        
+        if not data.empty:
+            data['marketplace'] = marketplace
+            data['tenant_id'] = tenants[account]
+            combined_data = pd.concat([combined_data, data], ignore_index=True)
 
     logging.info("Upserting data")
     postgresql.upsert_bulk(table_name, combined_data, file_extension='pandas')
@@ -75,4 +79,5 @@ def create_table(drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    update_data()
+    for account in tenants.keys():
+        update_data(account=account)
