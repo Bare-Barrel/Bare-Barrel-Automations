@@ -4,7 +4,7 @@ from google.oauth2.service_account import Credentials
 from gspread_dataframe import set_with_dataframe
 import pandas as pd
 from google_sheets_data_sources_query import worksheet_queries
-from postgresql import sql_to_dataframe
+import postgresql
 import time
 import logging
 import logger_setup
@@ -12,11 +12,21 @@ import logger_setup
 logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
+tenants = postgresql.get_tenants()
 
 # Google Sheets parameters
 google_sheet_data_sources = {
-    '[KPIs][K1] WW Data Sources': 'https://docs.google.com/spreadsheets/d/1-DKSsS0yA8tFDHBeOawVQp4nczCjmNPNJrsqyjgR4bc/edit?gid=732099413#gid=732099413',
-    '[Supply C.][SC] WW Data Sources': 'https://docs.google.com/spreadsheets/d/16TKSUWBkJ4MAebOXt33RRWR3NA9gSzzQIOEdPHtRQno/edit?gid=2126659402#gid=2126659402'
+    'Bare Barrel':
+    {
+        '[KPIs][K1] WW Data Sources': 'https://docs.google.com/spreadsheets/d/1-DKSsS0yA8tFDHBeOawVQp4nczCjmNPNJrsqyjgR4bc/edit?gid=732099413#gid=732099413',
+        '[Supply C.][SC] WW Data Sources': 'https://docs.google.com/spreadsheets/d/16TKSUWBkJ4MAebOXt33RRWR3NA9gSzzQIOEdPHtRQno/edit?gid=2126659402#gid=2126659402'
+    },
+    'Rymora':
+    {
+        '[KPIs][K1][Rymora] WW Data Sources': 'https://docs.google.com/spreadsheets/d/1-IEyNY2y5sjr-90TEhg1riOTPloRRwOa9-S22g766-o/edit?gid=1803521062#gid=1803521062',
+        '[Supply C.][SC][Rymora] WW Data Sources': 'https://docs.google.com/spreadsheets/d/1shyRI3zAY9avDWvbrgD_JEe2bwRpFUQZJ1YwfPUDvW8/edit?gid=549226539#gid=549226539'
+
+    }
 }
 
 # Sheets start row & col
@@ -38,7 +48,7 @@ credentials = Credentials.from_service_account_file(
 )
 
 
-def batch_update_data_sources(url, worksheets='All'):
+def batch_update_data_sources(url, worksheets='All', account='Bare Barrel'):
     '''
     Updates google sheets data sources by specifying url.
     It automatically detects worksheets to be updated by checking the sheet name in the `worksheet_queries`.
@@ -71,11 +81,17 @@ def batch_update_data_sources(url, worksheets='All'):
     # Batch Update Google Sheet
     for worksheet_name in worksheet_names:
         try:
-            logger.info(f"\nOpening worksheet {worksheet_name}")
+            logger.info(f"\nOpening {account} worksheet {worksheet_name}")
             worksheet = sheet.worksheet(worksheet_name)
 
             logger.info("\tGetting data from database...")
-            df = sql_to_dataframe(worksheet_queries[worksheet_name])
+            tenant_id = str(tenants[account])
+            query = worksheet_queries[worksheet_name]
+            # tenant_id = f"({', '.join(repr(v) for v in tenant_id)},)" # makes sure it ends with trailing comma
+            # query = query % tenant_id
+            df = postgresql.sql_to_dataframe(query.replace('%s', tenant_id))
+
+
 
             logger.info('\tUpdating worksheet data...')
             if worksheet_name in google_sheets_custom_row_col:
@@ -95,9 +111,12 @@ def batch_update_data_sources(url, worksheets='All'):
         
 
 if __name__ == '__main__':
-    # batch_update_data_sources(google_sheet_data_sources['[Supply C.][SC] WW Data Sources'], 'Shipments')
-    for google_sheet in google_sheet_data_sources:
+    # batch_update_data_sources(google_sheet_data_sources['Rymora']['[Supply C.][SC][Rymora] WW Data Sources'], 'FBA-Inv')
+    
+    for account in tenants.keys():
 
-        sheet_url = google_sheet_data_sources[google_sheet]
+        for google_sheet in google_sheet_data_sources[account]:
 
-        batch_update_data_sources(sheet_url)
+            sheet_url = google_sheet_data_sources[account][google_sheet]
+
+            batch_update_data_sources(sheet_url, account=account)
