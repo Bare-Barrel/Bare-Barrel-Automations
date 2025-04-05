@@ -56,6 +56,11 @@ def download_combine_reports(account='Bare Barrel', marketplaces=['US', 'CA', 'U
         # Downloads report in bytes
         report_id = report_ids[marketplace]
         document_id = get_report(report_id, account, marketplace)
+
+        if document_id is None:
+            logger.warning(f"\tSkipping {account}-{marketplace} report_id {report_id} ")
+            continue
+
         downloaded_data = download_report(document_id, account, marketplace) # bytes of the text data
 
         # Decode the bytes into a string & split string into lines
