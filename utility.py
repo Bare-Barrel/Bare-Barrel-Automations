@@ -141,6 +141,9 @@ def get_day_of_week(target_date, desired_day):
     current_day_index = target_date.weekday()  # Monday is 0, Sunday is 6
     desired_day_index = days.index(desired_day)
 
+    if current_day_index == desired_day_index:
+        return target_date
+
     # Calculate the difference in days between current and desired day
     day_difference = desired_day_index - current_day_index
     if day_difference <= 0:  # if desired day is before or same as current day, go to the next week's desired day
