@@ -74,8 +74,8 @@ def get_report(report_id, account, marketplace):
         if document_id:
             return document_id
 
-    elif payload['processingStatus'] == 'CANCELLED':
-        logger.warning(f"Report {report_id} was cancelled.")
+    elif payload['processingStatus'] == 'CANCELLED' or payload['processingStatus'] == 'FATAL':
+        logger.warning(f"Report {report_id} was {payload['processingStatus'].lower()}.")
         return None
 
     time.sleep(15)
