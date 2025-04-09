@@ -133,6 +133,11 @@ def download_report(report_id, root_directory, report_name, account, marketplace
         try:
             response = Reports(account=f'{account}-{marketplace}', 
                                 marketplace=Marketplaces[marketplace]).get_report(reportId=report_id)
+            
+            if not response:
+                logger.warning("\tSkipping. . .")
+                continue
+
             status, url = response.payload['status'], response.payload['url']
             logger.info(f"\tReport status: {status}")
 
@@ -310,7 +315,7 @@ def update_all_data(start_date, end_date, ad_products=['SPONSORED_PRODUCTS', 'SP
             data.fillna({"campaign_id": 0}, inplace=True)
 
         # upserts data
-        # postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 
 def create_table(directory, drop_table_if_exists=False):
