@@ -290,7 +290,7 @@ def update_data(ad_product, report_type, start_date, end_date, account='Bare Bar
         postgresql.upsert_bulk(table_name, combined_data, file_extension='pandas')
 
 
-def update_all_data(start_date, end_date, ad_products = ['SPONSORED_BRANDS', 'SPONSORED_DISPLAY'], account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
+def update_all_data(start_date, end_date, ad_products = ['SPONSORED_BRANDS'], account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
 
     for ad_product in to_list(ad_products):
