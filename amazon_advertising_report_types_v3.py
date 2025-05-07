@@ -153,7 +153,7 @@ table_names = {
                         "metrics": f'{sd_campaign_base_metrics}, {sd_campaign_addtl_metrics}'
                 },
                 "['campaign', 'matchedTarget']": {
-                        "table_name": "matched_target",
+                        "table_name": "matched_target_campaign",
                         "metrics": f'{sd_campaign_base_metrics}, {"campaignBudgetAmount, campaignStatus, costType"}, {sd_matchedTarget_addtl_metrics}'
                 },
             },
@@ -162,10 +162,10 @@ table_names = {
                         "table_name": "adgroup",
                         "metrics": f'{sd_adgroup_base_metrics}, {sd_adgroup_addtl_metrics}'
                 },
-                "['adGroup', 'matchedTarget']": {
-                        "table_name": "matched_target",
-                        "metrics": f'{sd_adgroup_base_metrics}, {sd_matchedTarget_addtl_metrics}'
-                },
+                # "['adGroup', 'matchedTarget']": {
+                #         "table_name": "matched_target_adgroup",
+                #         "metrics": f'{sd_adgroup_base_metrics}, {sd_matchedTarget_addtl_metrics}'
+                # },
             },
             "sdTargeting": {
                 "['targeting']": {
