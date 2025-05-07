@@ -251,7 +251,7 @@ def update_data(ad_product, report_type_id, start_date, end_date, account='Bare 
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 
-def update_all_data(start_date, end_date, ad_products=['SPONSORED_PRODUCTS', 'SPONSORED_BRANDS'],
+def update_all_data(start_date, end_date, ad_products=['SPONSORED_PRODUCTS', 'SPONSORED_BRANDS', 'SPONSORED_DISPLAY'],
                         account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     """
     Download all reports & upserts to database.
@@ -362,20 +362,20 @@ if __name__ == '__main__':
             logger.info("-UPDATING SP LAST 90 DAYS-")
             start_date, end_date = dt.date.today() - dt.timedelta(days=90), dt.date.today() - dt.timedelta(days=60)
             update_all_data(start_date, end_date, 'SPONSORED_PRODUCTS', account=account)
-            logger.info("-UPDATING SP & SB LAST 60 DAYS-")
+            logger.info("-UPDATING SP, SB & SD LAST 60 DAYS-")
             update_all_data(start_date + dt.timedelta(days=30), end_date + dt.timedelta(days=30), account=account)
-            logger.info("-UPDATING SP & SB LAST 30 DAYS-")
+            logger.info("-UPDATING SP, SB & SD LAST 30 DAYS-")
             update_all_data(start_date + dt.timedelta(days=60), dt.date.today(), account=account)
 
         # Updates last 30 days at the middle of the month
         elif day == 15 and hour == 1:
-            logger.info("-UPDATING SP & SB LAST 30 DAYS-")
+            logger.info("-UPDATING SP, SB & SD LAST 30 DAYS-")
             start_date, end_date = dt.date.today() - dt.timedelta(days=30), dt.date.today()
             update_all_data(start_date, end_date, account=account) 
 
         # Updates last 7 days daily
         elif day not in (1, 15) and hour == 1:
-            logger.info("-UPDATING SP & SB LAST 7 DAYS-")
+            logger.info("-UPDATING SP, SB & SD LAST 7 DAYS-")
             start_date, end_date = dt.date.today() - dt.timedelta(days=7), dt.date.today()
             update_all_data(start_date, end_date, account=account)
 
