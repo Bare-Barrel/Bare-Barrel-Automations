@@ -3,7 +3,23 @@ worksheet_queries = {
                     where tenant_id = %s
                     order by snapshot_date desc, marketplace, sku;''',
 
-    'FBA-Inv': '''select * from inventory.fba
+    'FBA-Inv': '''select 
+                        asin,
+                        fn_sku,
+                        seller_sku,
+                        marketplace,
+                        date,
+                        last_updated_time,
+                        total_quantity,
+                        fulfillable_quantity,
+                        inbound_working_quantity,
+                        inbound_shipped_quantity,
+                        inbound_receiving_quantity,
+                        reserved_quantity_total_reserved_quantity,
+                        unfulfillable_quantity_total_unfulfillable_quantity,
+                        reserved_quantity_pending_transshipment_quantity,
+                        reserved_quantity_fc_processing_quantity
+                    from inventory.fba
                     where last_updated_time IS NOT NULL
                         and tenant_id = %s
                     order by date desc, marketplace asc, asin asc;''',
