@@ -7,6 +7,7 @@ import logging
 import logger_setup
 import asyncio
 import pyotp
+import re
 
 
 logger_setup.setup_logging(__file__)
@@ -57,51 +58,54 @@ async def login_amazon(page, account='Bare Barrel'):
     await asyncio.sleep(5)
 
     # checks if it landed on home page
-    login_button = page.get_by_role("link", name="Log in", exact=True)
+    login_button = page.get_by_role(
+                        "link",
+                        name=re.compile(r"Log in", re.IGNORECASE)
+                    ).nth(0) # first element
 
-    if not await login_button.is_visible():
-        return
+    # goes to the process of manual loggin in
+    if await login_button.is_visible():
+        await login_button.click()
     
-    await login_button.click()
-    await asyncio.sleep(2)
+        await asyncio.sleep(2)
 
-    # checks if login page shows select account or input email
-    account_button = page.get_by_role("button", name=f"{config['amazon_name']} {config['amazon_email']}")
+        # checks if login page shows select account or input email
+        account_button = page.get_by_role("button", name=f"{config['amazon_name']} {config['amazon_email']}")
 
-    if await account_button.count():
-        await account_button.click()
+        if await account_button.count():
+            await account_button.click()
 
-    elif await page.is_visible('input[type="email"]'):
-        await page.locator('input[type="email"]').fill(config['amazon_email'])
-        await page.keyboard.press('Enter')
+        elif await page.is_visible('input[type="email"]'):
+            await page.locator('input[type="email"]').fill(config['amazon_email'])
+            await page.keyboard.press('Enter')
+            await asyncio.sleep(10)
+            # await page.get_by_label('Continue').click(force=True)
+
+
+        await page.get_by_label("Password").fill(config['amazon_password'])
+        await page.get_by_role("button", name="Sign in").click()
         await asyncio.sleep(10)
-        # await page.get_by_label('Continue').click(force=True)
 
+        # checks if two-step verification is visible
+        if await page.get_by_role("heading", name="Two-Step Verification").is_visible():
+            logger.info("Inputting Two-factor verification")
+            totp = pyotp.TOTP(config['amazon_secret_key'])
+            current_code = totp.now()
+            await page.locator('input[id="auth-mfa-otpcode"]').fill(current_code)
+            await page.keyboard.press('Enter')
 
-    await page.get_by_label("Password").fill(config['amazon_password'])
-    await page.get_by_role("button", name="Sign in").click()
-    await asyncio.sleep(10)
+        # selects store account and country
+        if await page.is_visible(f"button[name='{config['store_name']}']"):
+            await page.get_by_role("button", name=f"{config['store_name']}").click()
+            await page.get_by_role("button", name="United States").click()
+            await page.get_by_role("button", name="Select Account").click()
 
-    # checks if two-step verification is visible
-    if await page.get_by_role("heading", name="Two-Step Verification").is_visible():
-        logger.info("Inputting Two-factor verification")
-        totp = pyotp.TOTP(config['amazon_secret_key'])
-        current_code = totp.now()
-        await page.locator('input[id="auth-mfa-otpcode"]').fill(current_code)
-        await page.keyboard.press('Enter')
+            checkbox = page.locator('input[type="checkbox"][name="rememberMe"]')
 
-    # selects store account and country
-    if await page.is_visible(f"button[name='{config['store_name']}']"):
-        await page.get_by_role("button", name=f"{config['store_name']}").click()
-        await page.get_by_role("button", name="United States").click()
-        await page.get_by_role("button", name="Select Account").click()
+            if await checkbox.is_visible():
+                await checkbox.click()
 
-        checkbox = page.locator('input[type="checkbox"][name="rememberMe"]')
-
-        if await checkbox.is_visible():
-            await checkbox.click()
-
-    logger.info("\tLogin Sucessful")
+        logger.info("\tLogin Sucessful")
 
     # Parameters for selecting account
     params = {
