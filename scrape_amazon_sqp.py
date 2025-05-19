@@ -395,22 +395,21 @@ async def main():
     """
     Updates ASIN & Brand view last two weeks of data
     """
-    # for account in tenants.keys():
-    account = 'Rymora'
-    async with async_playwright() as playwright:
-        last_week = dt.date.today() - dt.timedelta(weeks=1)
-        end_date = get_day_of_week(last_week, 'Saturday')
-        start_date = end_date - dt.timedelta(weeks=2)
-        start_date = dt.date(2024,11,2) # 2024-11-02 in US
+    for account in tenants.keys():
+        async with async_playwright() as playwright:
+            last_week = dt.date.today() - dt.timedelta(weeks=1)
+            end_date = get_day_of_week(last_week, 'Saturday')
+            start_date = end_date - dt.timedelta(weeks=4)
+            # start_date = dt.date(2024,1,1) # 2024-11-02 in US
 
-        saturdays = []
-        while start_date <= end_date:
-            saturdays.append(start_date)
-            start_date += dt.timedelta(days=7)
+            saturdays = []
+            while start_date <= end_date:
+                saturdays.append(start_date)
+                start_date += dt.timedelta(days=7)
 
-        for view in ['brand']:
-            task = asyncio.create_task(scrape_sqp(playwright, account, marketplaces=['US', 'CA', 'UK'], date_reports=saturdays, view=view))
-            await task
+            for view in ['brand']:
+                task = asyncio.create_task(scrape_sqp(playwright, account, marketplaces=['US', 'CA', 'UK'], date_reports=saturdays, view=view))
+                await task
 
 
 if __name__ == '__main__':
