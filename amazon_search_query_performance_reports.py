@@ -92,28 +92,31 @@ def download_combine_reports(report_ids, account='Bare Barrel', marketplace='US'
 def update_data(start_date, end_date, asins='All', account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
     logger.info(f"Updating SQP data {asins} {account}-{marketplaces} {start_date} - {end_date}")
 
-    if asins == 'All':
-        logger.info(f"Getting all active ASINs in {account}-{marketplace} {start_date} - {end_date}")
-
+    def get_asins(start_date, end_date, account, marketplace):
         with postgresql.setup_cursor() as cur:
-            cur.execute(f"""SELECT DISTINCT asin FROM listings_items.summaries 
-                                WHERE 
-                                    marketplace = '{marketplace}'
-                                    AND tenant_id = {tenants[account]}
-                                    AND date >= '{start_date}'::DATE - INTERVAL '6 days' 
-                                    AND date <= '{end_date}'::DATE
-                                    AND status @> ARRAY['DISCOVERABLE', 'BUYABLE']
-                                    AND asin NOT IN (SELECT DISTINCT ASIN FROM {table_name} 
-                                                            WHERE marketplace = '{marketplace}'
-                                                                AND tenant_id = {tenants[account]}
-                                                                AND reporting_date = '{start_date}');""")
+            cur.execute(f"""
+                        SELECT DISTINCT asin 
+                        FROM listings_items.summaries 
+                        WHERE 
+                            marketplace = '{marketplace}'
+                            AND tenant_id = {tenants[account]}
+                            AND date >= '{start_date}'::DATE - INTERVAL '6 days' 
+                            AND date <= '{end_date}'::DATE
+                            AND status @> ARRAY['DISCOVERABLE', 'BUYABLE']
+            ;""")
             asins = [asin['asin'] for asin in cur.fetchall()]
-    
+            return asins
+
     # Requests report
     marketplace_report_ids = {}
 
     for marketplace in to_list(marketplaces):
         marketplace_report_ids[marketplace] = []
+
+        if asins == 'All':
+            # Gets all active ASINs
+            asins = get_asins(start_date, end_date, account, marketplace)
+            logger.info(f"Getting all active ASINs in {account}-{marketplace} {start_date} - {end_date}")
 
         for asin in to_list(asins):
             report_ids = request_reports(asin, start_date, end_date, account=account, marketplace=marketplace)
