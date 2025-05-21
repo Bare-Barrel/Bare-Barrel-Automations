@@ -288,6 +288,7 @@ worksheet_queries = {
                                                                         AND t2.marketplace = t3.marketplace 
                     WHERE t1.marketplace = 'US'
                         and t1.tenant_id = %s
+                        and purchase_date >= '2024-01-01'
                     order by purchase_date asc;''',
 
     'Orders-CA': '''select 
