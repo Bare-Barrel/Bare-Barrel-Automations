@@ -287,6 +287,7 @@ worksheet_queries = {
                                 order by asin, marketplace, date desc) as t3 on t2.asin = t3.asin 
                                                                         AND t2.marketplace = t3.marketplace 
                     WHERE t1.marketplace = 'US'
+                        and purchase_date >= '2024-01-01'
                         and t1.tenant_id = %s
                     order by purchase_date asc;''',
 
@@ -329,6 +330,7 @@ worksheet_queries = {
                                                                         AND t2.marketplace = t3.marketplace 
                     WHERE t1.marketplace = 'CA'
                         and t1.tenant_id = %s
+                        and purchase_date >= '2024-01-01'
                     order by purchase_date asc;''',
 
     'Orders-UK': '''select 
@@ -370,6 +372,7 @@ worksheet_queries = {
                                                                         AND t2.marketplace = t3.marketplace 
                     WHERE t1.marketplace = 'UK'
                         and t1.tenant_id = %s
+                        and purchase_date >= '2024-01-01'
                     order by purchase_date asc;''',
 
     "Orders Summary": '''
