@@ -199,6 +199,6 @@ if __name__ == '__main__':
     table_names = ['awd.inbound_shipments_summary', 
                    'awd.inventory',
                    'awd.inbound_shipments']
-
-    for table_name in table_names:
-        update_data(table_name, marketplaces=['US']) # AWD is only available in US for now
+    for account in tenants.keys():
+        for table_name in table_names:
+            update_data(table_name, account=account, marketplaces=['US']) # AWD is only available in US for now
