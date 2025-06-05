@@ -379,14 +379,14 @@ worksheet_queries = {
                     select 
                         t1.purchase_date::DATE, 
                         t1.marketplace, 
-                        t1.asin,
+                        t2.asin,
                         t2.seller_sku, 
                         SUM(t2.quantity_ordered) quantity_ordered
                     from orders.amazon_orders t1
                     left join orders.amazon_order_items t2
                         on t1.amazon_order_id = t2.amazon_order_id
                     where t1.tenant_id = %s
-                    group by t1.purchase_date::DATE, t1.marketplace, t1,asin, t2.seller_sku
+                    group by t1.purchase_date::DATE, t1.marketplace, t2.asin, t2.seller_sku
                     order by t1.purchase_date::DATE desc, t1.marketplace desc, SUM(t2.quantity_ordered) desc;
     ''',
 
