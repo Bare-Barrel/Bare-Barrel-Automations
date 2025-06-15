@@ -5,9 +5,8 @@ from sp_api.base.reportTypes import ReportType
 from sp_api.base.exceptions import SellingApiRequestThrottledException
 import time
 import pandas as pd
+import numpy as np
 import postgresql
-import gzip
-import json
 import logging
 import logger_setup
 from utility import to_list
@@ -58,8 +57,13 @@ def download_combine_reports(report_ids, account='Bare Barrel', marketplace='US'
         document_id = get_report(report_id, account, marketplace)
         raw_bytes = download_report(document_id, account, marketplace)
 
+        if not raw_bytes:
+            logger.warning(f"\tReport {report_id} is empty or failed to download.")
+            continue
+
         # Convert tab-delimited bytes string to Pandas DataFrame
-        data = pd.read_csv(BytesIO(raw_bytes), sep="\t", dtype=str)
+        print(raw_bytes)
+        data = pd.read_csv(BytesIO(raw_bytes), sep="\t", dtype=str, encoding='latin1')
 
         if not data.empty:
             # Combines data
@@ -68,26 +72,13 @@ def download_combine_reports(report_ids, account='Bare Barrel', marketplace='US'
             data.insert(0, 'date', dt.date.today())
             combined_data = pd.concat([data, combined_data], ignore_index=True)
 
+    combined_data.replace("--", np.nan, inplace=True)                                        
+
     return combined_data
 
 
-def update_data(start_date, end_date, asins='All', account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
-    logger.info(f"Updating SQP data {asins} {account}-{marketplaces} {start_date} - {end_date}")
-
-    def get_asins(start_date, end_date, account, marketplace):
-        with postgresql.setup_cursor() as cur:
-            cur.execute(f"""
-                        SELECT DISTINCT asin 
-                        FROM listings_items.summaries 
-                        WHERE 
-                            marketplace = '{marketplace}'
-                            AND tenant_id = {tenants[account]}
-                            AND date >= '{start_date}'::DATE - INTERVAL '6 days' 
-                            AND date <= '{end_date}'::DATE
-                            AND status @> ARRAY['DISCOVERABLE', 'BUYABLE']
-            ;""")
-            asins = [asin['asin'] for asin in cur.fetchall()]
-            return asins
+def update_data(start_date, end_date, account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
+    logger.info(f"Updating FBA Fee Preview Report {account}-{marketplaces} {start_date} - {end_date}")
 
     # Requests report
     marketplace_report_ids = {}
@@ -95,14 +86,8 @@ def update_data(start_date, end_date, asins='All', account='Bare Barrel', market
     for marketplace in to_list(marketplaces):
         marketplace_report_ids[marketplace] = []
 
-        if asins == 'All':
-            # Gets all active ASINs
-            asins = get_asins(start_date, end_date, account, marketplace)
-            logger.info(f"Getting all active ASINs in {account}-{marketplace} {start_date} - {end_date}")
-
-        for asin in to_list(asins):
-            report_ids = request_reports(asin, start_date, end_date, account=account, marketplace=marketplace)
-            marketplace_report_ids[marketplace] += report_ids
+        report_ids = request_reports(start_date, end_date, account=account, marketplace=marketplace)
+        marketplace_report_ids[marketplace] += report_ids
 
     # Downloads, cleans & combines report
     data = pd.DataFrame()
@@ -111,6 +96,9 @@ def update_data(start_date, end_date, asins='All', account='Bare Barrel', market
         report_ids = marketplace_report_ids[marketplace]
         df = download_combine_reports(report_ids, account=account, marketplace=marketplace)
         data = pd.concat([data, df], ignore_index=True)
+
+    with postgresql.setup_cursor() as cur:
+        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
     return data
 
@@ -131,7 +119,9 @@ def create_table(drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    start_date, end_date = dt.date.today(), dt.date.today()
-    create_table()
-    # for account in tenants.keys():
-    #     update_data(start_date, end_date, account=account)
+    date_yesterday = dt.date.today() - dt.timedelta(days=3)
+    start_date = dt.date.today() - dt.timedelta(days=3)
+    end_date = dt.date.today() - dt.timedelta(days=1)
+
+    for account in tenants.keys():
+        update_data(start_date, end_date, account=account)
