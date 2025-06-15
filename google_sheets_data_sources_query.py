@@ -454,5 +454,95 @@ worksheet_queries = {
                         where t1.date = (select max(date) from awd.inbound_shipments)
                             and t1.tenant_id = %s
                     )
-                    order by created desc nulls last, "shipment id", "destination country" desc nulls last;'''
+                    order by created desc nulls last, "shipment id", "destination country" desc nulls last;''',
+
+    "AWD": '''
+                SELECT
+                t1.date,
+                t1.shipment_id,
+                t1.shipment_status,
+
+                -- ASIN from the attributes array
+                attr_item.attr ->> 'value'                         AS asin,
+
+                -- SKU/quantity from the “distributionPackage.contents.products” array
+                distribution_package.elem ->> 'sku'               AS sku,
+                (distribution_package.elem ->> 'quantity')::int   AS package_quantity,
+
+                -- count from the shipment_container_quantities array
+                (shipment_container.elem ->> 'count')::int        AS cases,
+
+                -- available = package_quantity * container_count
+                ((distribution_package.elem ->> 'quantity')::int
+                    * (shipment_container.elem ->> 'count')::int
+                )                                                  AS awd_available,
+
+                t1.destination_address_name                     AS facility_id,
+                t1.destination_address_country_code              AS country,
+
+                -- from the LEFT JOIN’d sub-query
+                t2.expected_box_count,
+                t2.received_box_count,
+
+                -- package_quantity * expected_box_count
+                ((distribution_package.elem ->> 'quantity')::int
+                    * t2.expected_box_count
+                )                                                  AS expected_quantity,
+
+                -- package_quantity * received_box_count
+                ((distribution_package.elem ->> 'quantity')::int
+                    * t2.received_box_count
+                )                                                  AS received_quantity
+
+                FROM awd.inbound_shipments AS t1
+
+                -- 1) unnest the top-level shipment_container_quantities array
+                CROSS JOIN LATERAL
+                jsonb_array_elements(t1.shipment_container_quantities)
+                AS shipment_container(elem)
+
+                -- 2) unnest its distributionPackage.contents.products array
+                CROSS JOIN LATERAL
+                jsonb_array_elements(
+                    shipment_container.elem
+                    -> 'distributionPackage'
+                    -> 'contents'
+                    -> 'products'
+                ) AS distribution_package(elem)
+
+                -- 3) pick out the single JSONB object in attributes[] where name='asin'
+                CROSS JOIN LATERAL (
+                SELECT attr
+                FROM jsonb_array_elements(distribution_package.elem -> 'attributes') AS attr
+                WHERE attr->>'name' = 'asin'
+                LIMIT 1
+                ) AS attr_item(attr)
+
+                LEFT JOIN (
+                --
+                -- 4) explode shipment_sku_quantities into one row per SKU
+                --
+                SELECT
+                    date,
+                    shipment_id,
+
+                    -- extract sku as plain text
+                    shipment_sku.elem ->> 'sku'                   AS sku,
+
+                    -- expected and received box counts
+                    (shipment_sku.elem -> 'expectedQuantity' ->> 'quantity')::int AS expected_box_count,
+                    (shipment_sku.elem -> 'receivedQuantity' ->> 'quantity')::int AS received_box_count
+
+                FROM awd.inbound_shipments
+
+                CROSS JOIN LATERAL
+                    jsonb_array_elements(shipment_sku_quantities)
+                    AS shipment_sku(elem)
+                ) AS t2
+                ON t1.date         = t2.date
+                AND t1.shipment_id  = t2.shipment_id
+                AND (distribution_package.elem ->> 'sku') = t2.sku
+                WHERE t1.tenant_id = 1
+                ORDER BY date DESC, country DESC, shipment_status DESC, shipment_id, sku;
+'''
 }   
