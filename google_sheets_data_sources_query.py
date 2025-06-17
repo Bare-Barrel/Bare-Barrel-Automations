@@ -542,7 +542,63 @@ worksheet_queries = {
                 ON t1.date         = t2.date
                 AND t1.shipment_id  = t2.shipment_id
                 AND (distribution_package.elem ->> 'sku') = t2.sku
-                WHERE t1.tenant_id = 1
+                WHERE t1.tenant_id = %s
                 ORDER BY date DESC, country DESC, shipment_status DESC, shipment_id, sku;
+''',
+
+    "FBA Fee Preview": '''
+                SELECT
+                    date,
+                    sku,
+                    fnsku,
+                    asin,
+                    amazon_store,
+                    product_name,
+                    product_group,
+                    brand,
+                    fulfilled_by,
+                    your_price,
+                    sales_price,
+                    longest_side,
+                    median_side,
+                    shortest_side,
+                    length_and_girth,
+                    unit_of_dimension,
+                    item_package_weight,
+                    unit_of_weight,
+                    product_size_tier,
+                    currency,
+                    estimated_fee_total
+                    estimated_referral_fee_per_unit,
+                    estimated_variable_closing_fee,
+                    estimated_order_handling_fee_per_order,
+                    estimated_pick_pack_fee_per_unit,
+                    estimated_weight_handling_fee_per_unit,
+                    expected_fulfillment_fee_per_unit,
+                    (estimated_referral_fee_per_unit / your_price) "referral_fee_%"
+                FROM business_reports.fba_fee_preview
+                WHERE tenant_id = %s
+
+                UNION
+
+                SELECT
+                    snapshot_date date,
+                    sku,
+                    fnsku,
+                    asin,
+                    marketplace amazon_store,
+                    product_name,
+                    product_group,
+                    null::text brand,
+                    null::text fulfilled_by,
+                    your_price,
+                    sales_price,
+                    null, null, null, null, null, null, null, null, null, null,
+                    null, null, null, null, null, null
+                FROM inventory.fba_planning_inventory
+                WHERE tenant_id = %s
+                    AND available = 0
+
+                ORDER BY date DESC, amazon_store DESC, sku;
 '''
 }   
