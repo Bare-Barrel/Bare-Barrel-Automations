@@ -62,12 +62,10 @@ def download_combine_reports(report_ids, account='Bare Barrel', marketplace='US'
             continue
 
         # Convert tab-delimited bytes string to Pandas DataFrame
-        print(raw_bytes)
         data = pd.read_csv(BytesIO(raw_bytes), sep="\t", dtype=str, encoding='latin1')
 
         if not data.empty:
             # Combines data
-            data.insert(0, 'marketplace', marketplace)
             data.insert(0, 'tenant_id', tenants[account])
             data.insert(0, 'date', dt.date.today())
             combined_data = pd.concat([data, combined_data], ignore_index=True)
@@ -119,9 +117,8 @@ def create_table(drop_table_if_exists=False):
 
 
 if __name__ == '__main__':
-    date_yesterday = dt.date.today() - dt.timedelta(days=3)
-    start_date = dt.date.today() - dt.timedelta(days=3)
-    end_date = dt.date.today() - dt.timedelta(days=1)
+    start_date = dt.date.today() - dt.timedelta(days=2)
+    end_date = dt.date.today()
 
     for account in tenants.keys():
         update_data(start_date, end_date, account=account)
