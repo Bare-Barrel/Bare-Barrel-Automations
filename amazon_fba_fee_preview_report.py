@@ -95,6 +95,10 @@ def update_data(start_date, end_date, account='Bare Barrel', marketplaces=['US',
         df = download_combine_reports(report_ids, account=account, marketplace=marketplace)
         data = pd.concat([data, df], ignore_index=True)
 
+    # Removes duplicates in the PK columns
+    data.drop_duplicates(subset=['date', 'asin', 'sku', 'fnsku', 'amazon_store'], 
+                         keep='first', inplace=True)
+
     with postgresql.setup_cursor() as cur:
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
