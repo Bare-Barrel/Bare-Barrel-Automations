@@ -96,7 +96,7 @@ def update_data(start_date, end_date, account='Bare Barrel', marketplaces=['US',
         data = pd.concat([data, df], ignore_index=True)
 
     # Removes duplicates in the PK columns
-    data.drop_duplicates(subset=['date', 'asin', 'sku', 'fnsku', 'amazon_store'], 
+    data.drop_duplicates(subset=['date', 'asin', 'sku', 'fnsku', 'amazon-store'], 
                          keep='first', inplace=True)
 
     with postgresql.setup_cursor() as cur:
