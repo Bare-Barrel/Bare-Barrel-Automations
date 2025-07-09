@@ -22,6 +22,7 @@ worksheet_queries = {
                     from inventory.fba
                     where last_updated_time IS NOT NULL
                         and tenant_id = %s
+                        and (date - last_updated_time) < INTERVAL '30 days'
                     order by date desc, marketplace asc, asin asc;''',
 
     'Bus-RP': '''select date, parent_asin, marketplace, traffic_by_asin_mobile_app_sessions, traffic_by_asin_mobile_app_sessions_b2b, traffic_by_asin_browser_sessions,
