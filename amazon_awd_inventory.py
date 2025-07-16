@@ -201,4 +201,9 @@ if __name__ == '__main__':
                    'awd.inbound_shipments']
     for account in tenants.keys():
         for table_name in table_names:
-            update_data(table_name, account=account, marketplaces=['US']) # AWD is only available in US for now
+            try:
+                update_data(table_name, account=account, marketplaces=['US']) # AWD is only available in US for now
+
+            except (SellingApiRequestThrottledException, SellingApiServerException, ReadTimeout, ConnectionError) as e:
+                logger.error(f"Error updating {table_name} for {account}: {e}")
+                continue
