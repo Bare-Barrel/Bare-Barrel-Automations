@@ -235,7 +235,7 @@ def update_data(ad_product, report_type_id, start_date, end_date, account='Bare 
         # download and save
         file_path = download_report(report_ids[report_name], gzipped_directory, report_name, account, marketplace)
 
-        # manually ads marketplace
+        # manually adds marketplace
         data = pd.read_json(file_path)
         data['marketplace'] = marketplace
         data['tenant_id'] = tenants[account]
@@ -379,8 +379,9 @@ if __name__ == '__main__':
             start_date, end_date = dt.date.today() - dt.timedelta(days=7), dt.date.today()
             update_all_data(start_date, end_date, account=account)
 
-        # Updates reports in `campaign` every hour
+        # Updates reports in `campaign` & `advertised_product` every hour
         elif day not in (1, 15) and hour != 1:
-            logger.info("-UPDATING SP Campaigns LAST 2 DAYS-")
+            logger.info("-UPDATING SP Campaigns & Advertised Product LAST 2 DAYS-")
             start_date, end_date = dt.date.today() - dt.timedelta(days=1), dt.date.today()
             update_data('SPONSORED_PRODUCTS', 'spCampaigns', start_date, end_date, account=account)
+            update_data('SPONSORED_PRODUCTS', 'spAdvertisedProduct', start_date, end_date, account=account)
