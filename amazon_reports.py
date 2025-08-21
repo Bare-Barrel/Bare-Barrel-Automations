@@ -39,7 +39,7 @@ def request_report(report_type, account, marketplace, start_date=None, end_date=
         start_date = dt.datetime.combine(start_date, dt.time.min).isoformat()
         end_date = dt.datetime.combine(end_date, dt.time.max).isoformat()
 
-    logger.info(f"Requesting {report_type} {account}-{marketplace} {f'{start_date} - {end_date}' if start_date else ''}")
+    logger.info(f"Requesting {report_type} {account}-{marketplace} {kwargs if kwargs else ''} {f'{start_date} - {end_date}' if start_date else ''}")
 
     response = ReportsV2(
                     account=f'{account}-{marketplace}',
