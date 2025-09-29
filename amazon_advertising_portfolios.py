@@ -5,7 +5,6 @@ from ad_api.base import Marketplaces
 from utility import to_list
 import pandas as pd
 import postgresql
-import logging
 import logger_setup
 
 logger_setup.setup_logging(__file__)

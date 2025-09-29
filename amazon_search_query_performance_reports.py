@@ -17,7 +17,7 @@ import os
 logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
-table_name = 'brand_analytics.search_query_performance_weekly_asin' # Brand view not yet available!
+table_name = 'brand_analytics.search_query_performance_weekly_asin' # Brand view not yet available on sp-api!
 tenants = postgresql.get_tenants()
 
 
@@ -130,7 +130,9 @@ def update_data(start_date, end_date, asins='All', account='Bare Barrel', market
         df = download_combine_reports(report_ids, account=account, marketplace=marketplace)
         data = pd.concat([data, df], ignore_index=True)
 
-    return data
+    postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+
+    # return data
 
 
 if __name__ == '__main__':
