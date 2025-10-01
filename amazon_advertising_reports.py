@@ -6,7 +6,10 @@ import io
 import gzip
 import time
 from ad_api.api.reports import Reports
-from ad_api.base.exceptions import AdvertisingApiTooManyRequestsException, AdvertisingApiException
+from ad_api.base.exceptions import (
+    AdvertisingApiTooManyRequestsException,
+    AdvertisingApiException,
+)
 from ad_api.base import Marketplaces
 from amazon_advertising_report_types_v3 import table_names
 from utility import to_list
@@ -23,17 +26,26 @@ logger = logging.getLogger(__name__)
 tenants = postgresql.get_tenants()
 
 
-def request_report(ad_product, report_type_id, group_by, start_date, end_date, time_unit='DAILY', account='Bare Barrel', marketplace='US'):
+def request_report(
+    ad_product,
+    report_type_id,
+    group_by,
+    start_date,
+    end_date,
+    time_unit="DAILY",
+    account="Bare Barrel",
+    marketplace="US",
+):
     """
     Requests a Sponsored Products report.
     Request the creation of a performance report for all entities of a single type which have
     performance data to report. Record types can be one of campaigns, adGroups, keywords,
     productAds, asins, and targets. Note that for asin reports, the report currently can not
-    include metrics associated with both keywords and targets. If the targetingId value is set 
-    in the request, the report filters on targets and does not return sales associated with keywords. 
-    If the targetingId value is not set in the request, the report filters on keywords and does not 
-    return sales associated with targets. Therefore, the default behavior filters the report on keywords. 
-    Also note that if both keywordId and targetingId values are passed, the report filters on targets only 
+    include metrics associated with both keywords and targets. If the targetingId value is set
+    in the request, the report filters on targets and does not return sales associated with keywords.
+    If the targetingId value is not set in the request, the report filters on keywords and does not
+    return sales associated with targets. Therefore, the default behavior filters the report on keywords.
+    Also note that if both keywordId and targetingId values are passed, the report filters on targets only
     and does not return keywords.
 
     Args:
@@ -55,9 +67,9 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
         "name": f"{ad_product} ({account}-{marketplace}) {report_type_id} {group_by} {start_date} - {end_date}",
         "startDate": str(start_date),
         "endDate": str(end_date),
-        "configuration":{
+        "configuration": {
             "adProduct": ad_product,
-            "groupBy": ast.literal_eval(group_by),    # converts to list
+            "groupBy": ast.literal_eval(group_by),  # converts to list
             "columns": columns.split(', '),
             # "filters": [
             #     {
@@ -67,18 +79,20 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
             # ],
             "reportTypeId": report_type_id,
             "timeUnit": time_unit,
-            "format": "GZIP_JSON"
-        }
+            "format": "GZIP_JSON",
+        },
     }
     logger.info(f"Requesting for {account}-{marketplace} \n{body['name']}")
-    
+
     sleep_multiplier = 1
     while True:
         try:
-            response = Reports(account=f'{account}-{marketplace}', 
-                                marketplace=Marketplaces[marketplace]).post_report(body=body)
+            response = Reports(
+                account=f'{account}-{marketplace}', 
+                marketplace=Marketplaces[marketplace],
+                ).post_report(body=body)
             return response.payload
-        
+
         except AdvertisingApiTooManyRequestsException as e:
             logger.warning(e)
             time.sleep(60 * sleep_multiplier)
@@ -95,18 +109,20 @@ def request_report(ad_product, report_type_id, group_by, start_date, end_date, t
 
             # Gets duplicate requested reportId
             report_id = error_message['detail'].split()[-1]
-            response = Reports(account=f'{account}-{marketplace}', 
-                                marketplace=Marketplaces[marketplace]).get_report(report_id)
+            response = Reports(
+                account=f'{account}-{marketplace}', 
+                marketplace=Marketplaces[marketplace],
+                ).get_report(report_id)
             return response.payload
 
 
 def download_report(report_id, root_directory, report_name, account, marketplace):
     """
     Once you have made a successful POST call, report generation can take up to three hours.
-    You can check the report generation status by using the reportId returned in the initial 
+    You can check the report generation status by using the reportId returned in the initial
     request to call the GET report endpoint: GET /reporting/reports/{reportId}.
     If the report is still generating, status is set to PENDING or PROCESSING.
-    When your report is ready to download, status returns as COMPLETED, and you will see an 
+    When your report is ready to download, status returns as COMPLETED, and you will see an
     address in the url field.
 
     Args:
@@ -117,9 +133,14 @@ def download_report(report_id, root_directory, report_name, account, marketplace
     Returns:
         file_path (str)
     """
-    # regrexing save path
+    # regexing save path
     match = re.search(r'(SPONSORED_\w+)\s\(.*(\w{2})\)\s(\w+)\s(\[.+\])', report_name)
-    ad_product, marketplace, report_type_id, group_by = match[1], match[2], match[3], match[4]
+    ad_product, marketplace, report_type_id, group_by = (
+        match[1],
+        match[2],
+        match[3],
+        match[4],
+        )
     table_name = table_names[ad_product][report_type_id][group_by]['table_name']
     directory = os.path.join(root_directory, ad_product, table_name, marketplace)
 
@@ -131,9 +152,11 @@ def download_report(report_id, root_directory, report_name, account, marketplace
         logger.info(f"Downloading {report_name}")
 
         try:
-            response = Reports(account=f'{account}-{marketplace}', 
-                                marketplace=Marketplaces[marketplace]).get_report(reportId=report_id)
-            
+            response = Reports(
+                account=f'{account}-{marketplace}',
+                marketplace=Marketplaces[marketplace],
+            ).get_report(reportId=report_id)
+
             if not response:
                 logger.warning("\tSkipping. . .")
                 continue
@@ -159,15 +182,37 @@ def download_report(report_id, root_directory, report_name, account, marketplace
                     logger.info("Failed to download file.")
                     logger.info("\tRedownloading...")
 
+            elif status == 'FAILED':
+                break
+
         except Exception as error:
             logger.error(error)
 
         time.sleep(60)
 
 
-def request_download_reports(ad_product, report_type_id, group_by, start_date, end_date, directory, time_unit='DAILY', account='Bare Barrel', marketplace='US'):
+def request_download_reports(
+    ad_product,
+    report_type_id,
+    group_by,
+    start_date,
+    end_date,
+    directory,
+    time_unit="DAILY",
+    account="Bare Barrel",
+    marketplace="US",
+):
     """Streamlines the process of downloading reports."""
-    response = request_report(ad_product, report_type_id, group_by, start_date, end_date, time_unit, account, marketplace)
+    response = request_report(
+        ad_product,
+        report_type_id,
+        group_by,
+        start_date,
+        end_date,
+        time_unit,
+        account,
+        marketplace,
+    )
 
     report_id, report_name = response['reportId'], response['name']
 
@@ -206,7 +251,14 @@ def combine_data(directory=None, file_paths=[], file_extension='.json.gz'):
     return combined_data
 
 
-def update_data(ad_product, report_type_id, start_date, end_date, account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
+def update_data(
+    ad_product,
+    report_type_id,
+    start_date,
+    end_date,
+    account="Bare Barrel",
+    marketplaces=["US", "CA", "UK"],
+):
     """
     Adds upsert data step to request_download_reports by
     combining the downloaded files
@@ -215,25 +267,44 @@ def update_data(ad_product, report_type_id, start_date, end_date, account='Bare 
 
     # requests reports
     for group_by in table_names[ad_product][report_type_id]:
-
         for marketplace in to_list(marketplaces):
-            response = request_report(ad_product, report_type_id, group_by, 
-                                        start_date, end_date, account=account, marketplace=marketplace)
+            response = request_report(
+                ad_product,
+                report_type_id,
+                group_by,
+                start_date,
+                end_date,
+                account=account,
+                marketplace=marketplace,
+            )
             report_ids[response['name']] = response['reportId']
             time.sleep(10)
-    
+
     # download reports
     gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
 
-    for report_name in report_ids:        
-        # regrexing table name
-        match = re.search(r'(SPONSORED_\w+)\s\(.*(\w{2})\)\s(\w+)\s(\[.+\])', report_name)
-        ad_product, marketplace, report_type_id, group_by = match[1], match[2], match[3], match[4]
+    for report_name in report_ids:
+        # regexing table name
+        match = re.search(
+            r'(SPONSORED_\w+)\s\(.*(\w{2})\)\s(\w+)\s(\[.+\])', report_name
+        )
+        ad_product, marketplace, report_type_id, group_by = (
+            match[1],
+            match[2],
+            match[3],
+            match[4],
+        )
         table_name = table_names[ad_product][report_type_id][group_by]['table_name']
         table_name = f"{ad_product.lower()}.{table_name}"
 
         # download and save
-        file_path = download_report(report_ids[report_name], gzipped_directory, report_name, account, marketplace)
+        file_path = download_report(
+            report_ids[report_name],
+            gzipped_directory,
+            report_name,
+            account,
+            marketplace,
+        )
 
         # manually adds marketplace
         data = pd.read_json(file_path)
@@ -251,8 +322,13 @@ def update_data(ad_product, report_type_id, start_date, end_date, account='Bare 
         postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
 
-def update_all_data(start_date, end_date, ad_products=['SPONSORED_PRODUCTS', 'SPONSORED_BRANDS', 'SPONSORED_DISPLAY'],
-                        account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
+def update_all_data(
+    start_date,
+    end_date,
+    ad_products=["SPONSORED_PRODUCTS", "SPONSORED_BRANDS", "SPONSORED_DISPLAY"],
+    account="Bare Barrel",
+    marketplaces=["US", "CA", "UK"],
+):
     """
     Download all reports & upserts to database.
     It can only update up to 31 days at a time.
@@ -269,38 +345,66 @@ def update_all_data(start_date, end_date, ad_products=['SPONSORED_PRODUCTS', 'SP
     report_ids = {}
     # requests reports
     for ad_product in to_list(ad_products):
-        data_retention_start_date = dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=data_retention[ad_product])
+        data_retention_start_date = dt.datetime.now(
+            dt.timezone.utc
+        ).date() - dt.timedelta(days=data_retention[ad_product])
 
         for report_type_id in table_names[ad_product]:
-
             for group_by in table_names[ad_product][report_type_id]:
-
                 for marketplace in to_list(marketplaces):
-                    current_start_date = start_date if start_date >= data_retention_start_date else data_retention_start_date
-                    current_end_date = min(end_date, current_start_date + dt.timedelta(days=max_date_range))
+                    current_start_date = (
+                        start_date
+                        if start_date >= data_retention_start_date
+                        else data_retention_start_date
+                    )
+                    current_end_date = min(
+                        end_date, current_start_date + dt.timedelta(days=max_date_range)
+                    )
 
                     while current_start_date < end_date:
-                        response = request_report(ad_product, report_type_id, group_by, 
-                                                    current_start_date, current_end_date, account=account, marketplace=marketplace)
+                        response = request_report(
+                            ad_product,
+                            report_type_id,
+                            group_by,
+                            current_start_date,
+                            current_end_date,
+                            account=account,
+                            marketplace=marketplace,
+                        )
                         report_ids[response['name']] = response['reportId']
-        
+
                         current_start_date = current_end_date + dt.timedelta(days=1)
-                        current_end_date = min(end_date, current_end_date + dt.timedelta(days=max_date_range))
+                        current_end_date = min(
+                            end_date,
+                            current_end_date + dt.timedelta(days=max_date_range),
+                        )
                         time.sleep(12)
 
-    
     # download reports
     gzipped_directory = os.path.join('PPC Data', 'RAW Gzipped JSON Reports')
 
-    for report_name in report_ids:        
-        # regrexing table name
-        match = re.search(r'(SPONSORED_\w+)\s\(.*(\w{2})\)\s(\w+)\s(\[.+\])', report_name)
-        ad_product, marketplace, report_type_id, group_by = match[1], match[2], match[3], match[4]
+    for report_name in report_ids:
+        # regexing table name
+        match = re.search(
+            r'(SPONSORED_\w+)\s\(.*(\w{2})\)\s(\w+)\s(\[.+\])', report_name
+        )
+        ad_product, marketplace, report_type_id, group_by = (
+            match[1],
+            match[2],
+            match[3],
+            match[4],
+        )
         table_name = table_names[ad_product][report_type_id][group_by]['table_name']
         table_name = f"{ad_product.lower()}.{table_name}"
 
         # download and save
-        file_path = download_report(report_ids[report_name], gzipped_directory, report_name, account, marketplace)
+        file_path = download_report(
+            report_ids[report_name],
+            gzipped_directory,
+            report_name,
+            account,
+            marketplace,
+        )
 
         # manually ads marketplace and tenant_id
         data = pd.read_json(file_path)
@@ -324,24 +428,30 @@ def create_table(directory, drop_table_if_exists=False):
     Upserts data by default.
     IMPORTANT!: Overlapping data may result to Primary Key error.
     """
-    # regrexing table name
+    # regexing table name
     match = re.search(r'(SPONSORED_\w*)/(.+)', str(directory))
     ad_product, report_type = match[1], match[2]
-    table_name = f"{ad_product.lower()}.{table_names[ad_product][report_type]['table_name']}"
+    table_name = (
+        f"{ad_product.lower()}.{table_names[ad_product][report_type]['table_name']}"
+    )
 
     # combines data in the directory
     combined_data = combine_data(directory, file_extension='.json.gz')
 
     if combined_data.empty:
-        logger.info(f"Table {table_name} is empty.\n\tCancelling table creation & upsertion. . .")
+        logger.info(
+            f"Table {table_name} is empty.\n\tCancelling table creation & upsertion. . ."
+        )
         return
 
-    with postgresql.setup_cursor() as cur:        
+    with postgresql.setup_cursor() as cur:
         if drop_table_if_exists:
             cur.execute(f"DROP TABLE IF EXISTS {table_name}")
 
         logger.info(f"Creating table {table_name}")
-        postgresql.create_table(cur, file_path=combined_data, file_extension='pandas', table_name=table_name)
+        postgresql.create_table(
+            cur, file_path=combined_data, file_extension='pandas', table_name=table_name
+        )
 
         logger.info("\tAdding triggers...")
         postgresql.update_updated_at_trigger(cur, table_name)
@@ -360,28 +470,58 @@ if __name__ == '__main__':
         # Updates 90 days at the start of the month
         if day == 1 and hour == 1:
             logger.info("-UPDATING SP LAST 90 DAYS-")
-            start_date, end_date = dt.date.today() - dt.timedelta(days=90), dt.date.today() - dt.timedelta(days=60)
+            start_date, end_date = (
+                dt.date.today() - dt.timedelta(days=90),
+                dt.date.today() - dt.timedelta(days=60),
+            )
             update_all_data(start_date, end_date, 'SPONSORED_PRODUCTS', account=account)
             logger.info("-UPDATING SP, SB & SD LAST 60 DAYS-")
-            update_all_data(start_date + dt.timedelta(days=30), end_date + dt.timedelta(days=30), account=account)
+            update_all_data(
+                start_date + dt.timedelta(days=30),
+                end_date + dt.timedelta(days=30),
+                account=account,
+            )
             logger.info("-UPDATING SP, SB & SD LAST 30 DAYS-")
-            update_all_data(start_date + dt.timedelta(days=60), dt.date.today(), account=account)
+            update_all_data(
+                start_date + dt.timedelta(days=60), dt.date.today(), account=account
+            )
 
         # Updates last 30 days at the middle of the month
         elif day == 15 and hour == 1:
             logger.info("-UPDATING SP, SB & SD LAST 30 DAYS-")
-            start_date, end_date = dt.date.today() - dt.timedelta(days=30), dt.date.today()
-            update_all_data(start_date, end_date, account=account) 
+            start_date, end_date = (
+                dt.date.today() - dt.timedelta(days=30),
+                dt.date.today(),
+            )
+            update_all_data(start_date, end_date, account=account)
 
         # Updates last 7 days daily
         elif day not in (1, 15) and hour == 1:
             logger.info("-UPDATING SP, SB & SD LAST 7 DAYS-")
-            start_date, end_date = dt.date.today() - dt.timedelta(days=7), dt.date.today()
+            start_date, end_date = (
+                dt.date.today() - dt.timedelta(days=7),
+                dt.date.today(),
+            )
             update_all_data(start_date, end_date, account=account)
 
         # Updates reports in `campaign` & `advertised_product` every hour
         elif day not in (1, 15) and hour != 1:
             logger.info("-UPDATING SP Campaigns & Advertised Product LAST 2 DAYS-")
-            start_date, end_date = dt.date.today() - dt.timedelta(days=1), dt.date.today()
-            update_data('SPONSORED_PRODUCTS', 'spCampaigns', start_date, end_date, account=account)
-            update_data('SPONSORED_PRODUCTS', 'spAdvertisedProduct', start_date, end_date, account=account)
+            start_date, end_date = (
+                dt.date.today() - dt.timedelta(days=1),
+                dt.date.today(),
+            )
+            update_data(
+                'SPONSORED_PRODUCTS',
+                'spCampaigns',
+                start_date,
+                end_date,
+                account=account,
+            )
+            update_data(
+                'SPONSORED_PRODUCTS',
+                'spAdvertisedProduct',
+                start_date,
+                end_date,
+                account=account,
+            )

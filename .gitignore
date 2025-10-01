@@ -11,3 +11,4 @@ __pycache__
 /logging/
 /H10 Keyword Tracker Downloads/
 rclone.conf
+pyproject.toml
