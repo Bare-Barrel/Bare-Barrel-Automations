@@ -15,13 +15,17 @@ logger = logging.getLogger(__name__)
 
 table_name = 'rankings.h10_keyword_tracker'
 
+
 def clean_data(file_path):
     data = pd.read_csv(file_path)
     data = data.drop_duplicates()
     data = data.replace({'-': np.nan})
     numeric_cols = ['Search Volume', 'Organic Rank', 'Sponsored Position']
     data[numeric_cols] = data[numeric_cols].applymap(
-                            lambda x: int(str(x).replace(">", "").replace("<", "")) if pd.notna(x) else np.nan)
+        lambda x: int(str(x).replace(">", "").replace("<", ""))
+        if pd.notna(x)
+        else np.nan
+    )
     data[numeric_cols] = data[numeric_cols].apply(pd.to_numeric)
     # The dates in the files are in local timezone, so we need to convert it to UTC
     timezone = ZoneInfo('Asia/Manila')
@@ -36,9 +40,16 @@ def update_data(file_path):
     postgresql.upsert_bulk(table_name, data, 'pandas')
 
 
+"""
+The following should be added as environment variables:
+export Automations="/usr/local/bin/Bare-Barrel-Automations"
+export RCLONE_CONFIG=$Automations/"rclone.conf"
+"""
 # Syncs Google Drive to Remote Folder
 google_drive_source = "google_drive:H10 Keyword Tracker Downloads"
-destination_folder = os.path.join(os.getenv('Automations'), 'H10 Keyword Tracker Downloads')
+destination_folder = os.path.join(
+    os.getenv('Automations'), 'H10 Keyword Tracker Downloads'
+)
 
 if not os.path.exists(destination_folder):
     os.makedirs(destination_folder)

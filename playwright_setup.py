@@ -1,8 +1,10 @@
-from playwright.sync_api import Playwright, sync_playwright, expect
+# from playwright.sync_api import Playwright, sync_playwright, expect
 from playwright.async_api import async_playwright
-from bs4 import BeautifulSoup
+
+# from bs4 import BeautifulSoup
 import json
-import postgresql
+
+# import postgresql
 import logging
 import logger_setup
 import asyncio
@@ -20,12 +22,12 @@ with open('config.json') as f:
 async def setup_playwright(storage_state=None, headless=False, default_timeout=None):
     """
     Initialize a new playwright's chromium page
-    
+
     Args:
     - storage_state (json): storage state of the last session.
     - headless (bool): with or without a browser.
     - default_timeout (int): default timeout in seconds before raising an error.
-        
+
     Return:
     - Playwright.chromium.launch.browser.new_context.new_page()
     - browser
@@ -33,7 +35,9 @@ async def setup_playwright(storage_state=None, headless=False, default_timeout=N
     """
     playwright = await async_playwright().start()
     browser = await playwright.chromium.launch(headless=headless)
-    context = await browser.new_context(storage_state=storage_state) # >>> storage_state=storage
+    context = await browser.new_context(
+        storage_state=storage_state
+    )  # >>> storage_state=storage
     page = await context.new_page()
 
     if default_timeout:
@@ -48,7 +52,7 @@ async def login_amazon(page, account='Bare Barrel'):
 
     Args:
     - page (playwright.page)
-    
+
     Returns:
     - None
     """
@@ -59,18 +63,19 @@ async def login_amazon(page, account='Bare Barrel'):
 
     # checks if it landed on home page
     login_button = page.get_by_role(
-                        "link",
-                        name=re.compile(r"Log in", re.IGNORECASE)
-                    ).nth(0) # first element
+        "link", name=re.compile(r"Log in", re.IGNORECASE)
+    ).nth(0)  # first element
 
     # goes to the process of manual loggin in
     if await login_button.is_visible():
         await login_button.click()
-    
+
         await asyncio.sleep(2)
 
         # checks if login page shows select account or input email
-        account_button = page.get_by_role("button", name=f"{config['amazon_name']} {config['amazon_email']}")
+        account_button = page.get_by_role(
+            "button", name=f"{config['amazon_name']} {config['amazon_email']}"
+        )
 
         if await account_button.count():
             await account_button.click()
@@ -81,9 +86,9 @@ async def login_amazon(page, account='Bare Barrel'):
             await asyncio.sleep(10)
             # await page.get_by_label('Continue').click(force=True)
 
-
         await page.get_by_label("Password").fill(config['amazon_password'])
-        await page.get_by_role("button", name="Sign in").click()
+        # await page.get_by_role("button", name="Sign in").click()
+        await page.get_by_role("button", name="Sign in").nth(0).click()
         await asyncio.sleep(10)
 
         # checks if two-step verification is visible
@@ -110,8 +115,10 @@ async def login_amazon(page, account='Bare Barrel'):
     # Parameters for selecting account
     params = {
         "Bare Barrel": "?mons_sel_mkid=amzn1.mp.o.ATVPDKIKX0DER&mons_sel_dir_mcid=amzn1.merchant.d.ADQBCWP5YIRJTEH4DNBUN7MD4A7Q&mons_sel_dir_paid=amzn1.pa.d.AC3MXOJCRYIFUPBFBKVVNNFGPWIA&ignore_selection_changed=true",
-        "Rymora": "?mons_sel_dir_mcid=amzn1.merchant.d.AD4TZW65NWB7A474I7YLXVUEJE7A&mons_sel_mkid=amzn1.mp.o.ATVPDKIKX0DER&mons_sel_dir_paid=amzn1.pa.d.AASAAFP3UIBK2Z23PIYPF57OUMLQ&ignore_selection_changed=true"
+        "Rymora": "?mons_sel_dir_mcid=amzn1.merchant.d.AD4TZW65NWB7A474I7YLXVUEJE7A&mons_sel_mkid=amzn1.mp.o.ATVPDKIKX0DER&mons_sel_dir_paid=amzn1.pa.d.AASAAFP3UIBK2Z23PIYPF57OUMLQ&ignore_selection_changed=true",
     }
+
+    await page.wait_for_url("**/home**")
 
     logger.info(f"Going to {account}'s Home Page")
     await page.goto("https://sellercentral.amazon.com/home" + params[account])

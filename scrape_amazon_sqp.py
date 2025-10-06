@@ -4,11 +4,11 @@ import json
 import pandas as pd
 import datetime as dt
 import re
-import amazon
-import time
+
+# import amazon
+# import time
 import asyncio
 import os
-import re
 import shutil
 import postgresql
 from utility import get_day_of_week, reposition_columns
@@ -26,13 +26,21 @@ storage_sellercentral = 'storage_sellercentral_amazon.json'
 
 table_names = {
     'asin': 'brand_analytics.search_query_performance_asin_view',
-    'brand': 'brand_analytics.search_query_performance_brand_view'
+    'brand': 'brand_analytics.search_query_performance_brand_view',
 }
 
 tenants = postgresql.get_tenants()
 
 
-async def generate_download(page, account='Bare Barrel', marketplace='US', reporting_range='weekly', date_report=None, view='brand', asin=''):
+async def generate_download(
+    page,
+    account='Bare Barrel',
+    marketplace='US',
+    reporting_range='weekly',
+    date_report=None,
+    view='brand',
+    asin='',
+):
     """
     Downloads Search Query Performance Reports.
 
@@ -47,26 +55,41 @@ async def generate_download(page, account='Bare Barrel', marketplace='US', repor
     Return:
     - bool
     """
-    logger.info(f"@SearchQueryPerformance Querying {view} {asin} ({account}-{marketplace}) {date_report}")
-    
+    logger.info(
+        f"@SearchQueryPerformance Querying {view} {asin} ({account}-{marketplace}) {date_report}"
+    )
+
     country_id = 'GB' if marketplace == 'UK' else marketplace
 
-    reporting_range_formats = {'weekly': 'weekly-week', 'monthly': 'monthly-year=2023&2023-month=2023-04-30', 'quarterly': 'quarterly-year=2023&2023-quarter=2023-03-31'} # unfinished
+    reporting_range_formats = {
+        'weekly': 'weekly-week',
+        'monthly': 'monthly-year=2023&2023-month=2023-04-30',
+        'quarterly': 'quarterly-year=2023&2023-quarter=2023-03-31',
+    }  # unfinished
     sqp_url = {
-                "brand": "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-brands-view" + 
-                            "&brand={}&reporting-range={}&{}={}&country-id={}".format(
-                            config['amazon_brand_id'][account], reporting_range, reporting_range_formats[reporting_range], 
-                            date_report, country_id.lower()
-                            ),
-                "asin": "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-asin-view" +
-                            "&asin={}&reporting-range={}&{}={}&country-id={}".format(
-                            asin, reporting_range, reporting_range_formats[reporting_range], 
-                            date_report, country_id.lower()
-                            )
+        "brand": "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-brands-view"
+        + "&brand={}&reporting-range={}&{}={}&country-id={}".format(
+            config['amazon_brand_id'][account],
+            reporting_range,
+            reporting_range_formats[reporting_range],
+            date_report,
+            country_id.lower(),
+        ),
+        "asin": "https://sellercentral.amazon.com/brand-analytics/dashboard/query-performance?view-id=query-performance-asin-view"
+        + "&asin={}&reporting-range={}&{}={}&country-id={}".format(
+            asin,
+            reporting_range,
+            reporting_range_formats[reporting_range],
+            date_report,
+            country_id.lower(),
+        ),
     }
 
     await page.goto(sqp_url[view])
-    await expect(page.get_by_role("button", name="Apply")).to_be_visible(timeout=60000)
+    apply_button = page.get_by_role("button", name="Apply")
+    await apply_button.wait_for(state="visible", timeout=60000)
+    await expect(apply_button).to_be_visible()
+    # await expect(page.get_by_role("button", name="Apply")).to_be_visible(timeout=60000)
 
     if await page.is_visible('text=Error:'):
         logger.info('\tInvalid input. \n\t\tSkipping...')
@@ -82,7 +105,7 @@ async def generate_download(page, account='Bare Barrel', marketplace='US', repor
     await page.get_by_role("button", name="Generate Download").click()
     await asyncio.sleep(5)
 
-    try: 
+    try:
         logger.info("Generating Download. . .")
 
         async with page.expect_popup(timeout=150000) as page2_info:
@@ -91,24 +114,32 @@ async def generate_download(page, account='Bare Barrel', marketplace='US', repor
                 radio_button = page.locator('input[value="COMPREHENSIVE"]')
                 await radio_button.click(force=True)
 
-            await page.locator("#downloadModalGenerateDownloadButton").get_by_role("button", name="Generate Download").click()
+            await (
+                page.locator("#downloadModalGenerateDownloadButton")
+                .get_by_role("button", name="Generate Download")
+                .click()
+            )
             await asyncio.sleep(5)
 
             # spam error to force download
             for _ in range(1, 100):
                 try:
-                    error_exists = await page.locator('#downloadModalGenerateDownloadButton').is_visible()
+                    error_exists = await page.locator(
+                        '#downloadModalGenerateDownloadButton'
+                    ).is_visible()
                     if not error_exists:
                         break
                     logger.warning("\t#ERROR: Trying again")
-                    await page.locator("#downloadModalGenerateDownloadButton").click(force=True)
+                    await page.locator("#downloadModalGenerateDownloadButton").click(
+                        force=True
+                    )
                     await asyncio.sleep(5)
 
                 except Exception as error:
-                    logger.error(error) 
-  
-            # closes download manager page every popup            
-            page2 = await page2_info.value 
+                    logger.error(error)
+
+            # closes download manager page every popup
+            page2 = await page2_info.value
             await page2.close()
             logger.info('\tDownload success!')
 
@@ -122,20 +153,25 @@ async def generate_download(page, account='Bare Barrel', marketplace='US', repor
 async def download_reports(page=None, n_downloads=100, account='Bare Barrel'):
     """
     Waits for all downloaded reports to be ready to download and then downloads all files in the download manager.
-    
+
     Args:
     - page (Playwright.page)
     - n_downloads (int): Number of reports to download. Max is 100. No pagination on Views 100.
 
-    Returns: 
+    Returns:
     - downloaded_filepaths (list)
     """
     if not page:
-        page, browser, context = await setup_playwright(storage_state=storage_sellercentral, 
-                                                                    headless=config['playwright_headless'], default_timeout=60000)
+        page, browser, context = await setup_playwright(
+            storage_state=storage_sellercentral,
+            headless=config['playwright_headless'],
+            default_timeout=60000,
+        )
         await login_amazon(page, account)
 
-    await page.goto('https://sellercentral.amazon.com/brand-analytics/download-manager') # ?brand_id param doesn't work
+    await page.goto(
+        'https://sellercentral.amazon.com/brand-analytics/download-manager'
+    )  # ?brand_id param doesn't work
     await asyncio.sleep(10)
 
     # waits for progress to be completed
@@ -150,13 +186,15 @@ async def download_reports(page=None, n_downloads=100, account='Bare Barrel'):
 
     # locates all download buttons
     download_buttons = await page.locator("role=row >> text=Download").all()
-    logger.info(f"Commencing Downloads.\n Total Download Buttons: {len(download_buttons) - 1}")
+    logger.info(
+        f"Commencing Downloads.\n Total Download Buttons: {len(download_buttons) - 1}"
+    )
 
     # downloads report from top to bottom
-    downloaded_filepaths = []   # download_button starts at index 1
+    downloaded_filepaths = []  # download_button starts at index 1
     max_downloads_per_page = 100 + 1
-    count = 1   # total counter
-    inner_count = 1 # counter for current iteration from 1 to 101
+    count = 1  # total counter
+    inner_count = 1  # counter for current iteration from 1 to 101
 
     while count <= n_downloads:
         try:
@@ -164,12 +202,14 @@ async def download_reports(page=None, n_downloads=100, account='Bare Barrel'):
 
             async with page.expect_download() as download_info:
                 async with page.expect_popup() as page2_info:
-                    page2 = await page2_info.value    # download popup closes immediately
+                    page2 = await page2_info.value  # download popup closes immediately
 
             # download file path and name
             download = await download_info.value
-            csv_path = await download.path() # random guid in a temp folder
-            filename = download.suggested_filename # US_Search_Query_Performance_ASIN_View_Week_2022_12_31.csv
+            csv_path = await download.path()  # random guid in a temp folder
+            filename = (
+                download.suggested_filename
+            )  # US_Search_Query_Performance_ASIN_View_Week_2022_12_31.csv
             marketplace = filename.split('_')[0]
 
             # retrieves asin to filename if it exists
@@ -179,11 +219,15 @@ async def download_reports(page=None, n_downloads=100, account='Bare Barrel'):
                 metadata = pd.read_csv(csv_path, nrows=0)
                 pattern = r'\["(.*?)"\]'
                 asin = re.search(pattern, metadata.columns[0]).group(1)
-                filename = filename.split('.')[0] + f' [{asin}].' + filename.split('.')[1] # US_Search_Query_Performance_ASIN_View_Week_2022_12_31 [B0B2B9X6P4].csv
+                filename = (
+                    filename.split('.')[0] + f' [{asin}].' + filename.split('.')[1]
+                )  # US_Search_Query_Performance_ASIN_View_Week_2022_12_31 [B0B2B9X6P4].csv
 
             # copies file to folder
             logger.info(f"Copying {filename} to SQP Downloads Folder")
-            saved_filepath = os.path.join(os.getcwd(), 'SQP Downloads', account, view, marketplace, f'{filename}')
+            saved_filepath = os.path.join(
+                os.getcwd(), 'SQP Downloads', account, view, marketplace, f'{filename}'
+            )
             os.makedirs(os.path.dirname(saved_filepath), exist_ok=True)
             shutil.copyfile(csv_path, saved_filepath)
             downloaded_filepaths.append(saved_filepath)
@@ -196,7 +240,6 @@ async def download_reports(page=None, n_downloads=100, account='Bare Barrel'):
 
             inner_count += 1
             count += 1
-
 
         except Exception as error:
             logger.error(error)
@@ -216,14 +259,14 @@ def combine_data(directory=None, file_paths=[], file_extension='.csv'):
             for filename in filenames:
                 if file_extension in filename:
                     file_paths.append(os.path.join(dirpath, filename))
-    
+
     # combines data
     combined_data = pd.DataFrame()
 
     for file_path in file_paths:
         logger.info(f"Combining {file_path}")
         metadata = pd.read_csv(file_path, nrows=0)
-        data     = pd.read_csv(file_path, skiprows=1)
+        data = pd.read_csv(file_path, skiprows=1)
 
         if data.empty:
             logger.info("\tEmpty data")
@@ -246,15 +289,26 @@ def combine_data(directory=None, file_paths=[], file_extension='.csv'):
         # calculates week number, start & end date
         data.rename(columns={'Reporting Date': 'reporting_date'}, inplace=True)
         data['reporting_date'] = pd.to_datetime(data['reporting_date'])
-        data['end_date']       = data['reporting_date']
-        data['start_date']     = data['end_date'] - dt.timedelta(days=6)
-        data['week']           = data['end_date'].dt.isocalendar().week
+        data['end_date'] = data['reporting_date']
+        data['start_date'] = data['end_date'] - dt.timedelta(days=6)
+        data['week'] = data['end_date'].dt.isocalendar().week
 
         # reposition
         view = re.search(r'(ASIN|Brand)', file_path)[1].lower()
         col_positions = {
-            'asin': {'reporting_date': 0, 'reporting_range': 1, 'marketplace': 2, 'asin': 3, 'Search Query': 4},
-            'brand': {'reporting_date': 0, 'reporting_range': 1, 'marketplace': 2, 'Search Query': 3}
+            'asin': {
+                'reporting_date': 0,
+                'reporting_range': 1,
+                'marketplace': 2,
+                'asin': 3,
+                'Search Query': 4,
+            },
+            'brand': {
+                'reporting_date': 0,
+                'reporting_range': 1,
+                'marketplace': 2,
+                'Search Query': 3,
+            },
         }
         data = reposition_columns(data, col_positions[view])
 
@@ -263,13 +317,18 @@ def combine_data(directory=None, file_paths=[], file_extension='.csv'):
     # drop duplicates on primary keys
     pkeys = [key for key in col_positions[view]]
     combined_data = combined_data.drop_duplicates(subset=pkeys)
-    
+
     return combined_data
 
 
-
-async def scrape_sqp(playwright: Playwright, account='Bare Barrel', marketplaces=['US', 'CA', 'UK'], 
-                     date_reports=[], view=['brand', 'asin'], headless=config['playwright_headless']) -> None:
+async def scrape_sqp(
+    playwright: Playwright,
+    account='Bare Barrel',
+    marketplaces=['US', 'CA', 'UK'],
+    date_reports=[],
+    view=['brand', 'asin'],
+    headless=config['playwright_headless'],
+) -> None:
     """
     Download weekly Search Query Performance per ASIN for each marketplace.
     Then inserts data to search_query_performance
@@ -285,19 +344,21 @@ async def scrape_sqp(playwright: Playwright, account='Bare Barrel', marketplaces
     """
     logger.info("Starting Search Query Performance Analytics. . .")
 
-    page, browser, context = await setup_playwright(storage_state=storage_sellercentral, 
-                                                                    headless=headless, default_timeout=180000)
+    page, browser, context = await setup_playwright(
+        storage_state=storage_sellercentral, headless=headless, default_timeout=180000
+    )
     await login_amazon(page, account)
 
     # downloads for each marketplace, date_report, asin
     downloads = 0
     downloaded_filepaths = []
 
-
     async def download_and_upsert(page, n_downloads):
         # download reports via `Downloads Manager`
         logger.info(f"@SearchQueryPerformance Downloading {n_downloads} reports")
-        downloaded_filepaths = await download_reports(page, n_downloads=downloads, account=account)
+        downloaded_filepaths = await download_reports(
+            page, n_downloads=downloads, account=account
+        )
 
         # inserts to amazon db
         table_name = table_names[view]
@@ -308,14 +369,13 @@ async def scrape_sqp(playwright: Playwright, account='Bare Barrel', marketplaces
         # resets download counter
         return 0
 
-
     for marketplace in marketplaces:
-
         if view == 'asin':
-
             for date_report in date_reports:
                 # gets all active asins
-                logger.info(f"Getting all active ASINs in {account}-{marketplace} {date_report}")
+                logger.info(
+                    f"Getting all active ASINs in {account}-{marketplace} {date_report}"
+                )
 
                 with postgresql.setup_cursor() as cur:
                     cur.execute(f"""SELECT DISTINCT asin FROM listings_items.summaries 
@@ -334,11 +394,20 @@ async def scrape_sqp(playwright: Playwright, account='Bare Barrel', marketplaces
 
                 if active_asins:
                     for asin in active_asins:
-                        downloads_generated = await generate_download(page, account, marketplace, date_report=date_report, view=view, asin=asin)
+                        downloads_generated = await generate_download(
+                            page,
+                            account,
+                            marketplace,
+                            date_report=date_report,
+                            view=view,
+                            asin=asin,
+                        )
                         downloads += 1 if downloads_generated else 0
 
                         if downloads == 100:
-                            downloads = await download_and_upsert(page, downloads) # resets download counter to 0
+                            downloads = await download_and_upsert(
+                                page, downloads
+                            )  # resets download counter to 0
 
         elif view == 'brand':
             with postgresql.setup_cursor() as cur:
@@ -347,24 +416,32 @@ async def scrape_sqp(playwright: Playwright, account='Bare Barrel', marketplaces
                                         AND tenant_id = {tenants[account]}
                                         AND reporting_date >= '{min(date_reports)}'::DATE 
                                         AND reporting_date <= '{max(date_reports)}'::DATE;""")
-                available_date_reports = [reporting_date['reporting_date'] for reporting_date in cur.fetchall()]
-                date_reports_to_download = [date_report for date_report in date_reports if date_report not in available_date_reports]
+                available_date_reports = [
+                    reporting_date['reporting_date']
+                    for reporting_date in cur.fetchall()
+                ]
+                date_reports_to_download = [
+                    date_report
+                    for date_report in date_reports
+                    if date_report not in available_date_reports
+                ]
 
             for date_report in date_reports_to_download:
-
-                downloads += await generate_download(page, account, marketplace, date_report=date_report, view=view)
+                downloads += await generate_download(
+                    page, account, marketplace, date_report=date_report, view=view
+                )
                 # downloads += 1 if downloads_generated else 0
 
                 if downloads == 100:
-                        downloads = await download_and_upsert(page, downloads) # resets download counter to 0
-
+                    downloads = await download_and_upsert(
+                        page, downloads
+                    )  # resets download counter to 0
 
     if downloads != 0:
         await download_and_upsert(page, downloads)
 
-
     # saves storage & closes browser.
-    await context.storage_state(path = storage_sellercentral)
+    await context.storage_state(path=storage_sellercentral)
     await context.close()
     await browser.close()
 
@@ -381,10 +458,16 @@ def create_table(view, drop_table_if_exists=False):
 
         primary_keys = {
             'asin': 'PRIMARY KEY (reporting_date, reporting_range, marketplace, asin, search_query)',
-            'brand': 'PRIMARY KEY (reporting_date, reporting_range, marketplace, search_query)'
+            'brand': 'PRIMARY KEY (reporting_date, reporting_range, marketplace, search_query)',
         }
 
-        postgresql.create_table(cur, data, file_extension='pandas', table_name=table_name, keys=primary_keys[view])
+        postgresql.create_table(
+            cur,
+            data,
+            file_extension='pandas',
+            table_name=table_name,
+            keys=primary_keys[view],
+        )
 
         postgresql.update_updated_at_trigger(cur, table_name)
 
@@ -395,9 +478,12 @@ async def main():
     """
     Updates ASIN & Brand view last two weeks of data
     """
+    date_today = dt.date.today()
+    # date_today = dt.date(2025,9,28)   # use this to backfill
+
     for account in tenants.keys():
         async with async_playwright() as playwright:
-            last_week = dt.date.today() - dt.timedelta(weeks=1)
+            last_week = date_today - dt.timedelta(weeks=1)
             end_date = get_day_of_week(last_week, 'Saturday')
             start_date = end_date - dt.timedelta(weeks=4)
             # start_date = dt.date(2024,1,1) # 2024-11-02 in US
@@ -408,7 +494,15 @@ async def main():
                 start_date += dt.timedelta(days=7)
 
             for view in ['brand']:
-                task = asyncio.create_task(scrape_sqp(playwright, account, marketplaces=['US', 'CA', 'UK'], date_reports=saturdays, view=view))
+                task = asyncio.create_task(
+                    scrape_sqp(
+                        playwright,
+                        account,
+                        marketplaces=['US', 'CA', 'UK'],
+                        date_reports=saturdays,
+                        view=view,
+                    )
+                )
                 await task
 
 
