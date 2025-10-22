@@ -1,9 +1,9 @@
 import requests
-import json
+# import json
 import pandas as pd
 import datetime as dt
-import io
-import gzip
+# import io
+# import gzip
 import time
 from ad_api.api.reports import Reports
 from ad_api.base.exceptions import (
@@ -306,20 +306,23 @@ def update_data(
             marketplace,
         )
 
-        # manually adds marketplace
-        data = pd.read_json(file_path)
-        data['marketplace'] = marketplace
-        data['tenant_id'] = tenants[account]
+        try:
+            # manually adds marketplace
+            data = pd.read_json(file_path)
+            data['marketplace'] = marketplace
+            data['tenant_id'] = tenants[account]
 
-        # removes null
-        if 'ad_group_id' in data.columns:
-            data.fillna({"ad_group_id": 0}, inplace=True)
+            # removes null
+            if 'ad_group_id' in data.columns:
+                data.fillna({"ad_group_id": 0}, inplace=True)
 
-        if 'campaign_id' in data.columns:
-            data.fillna({"campaign_id": 0}, inplace=True)
+            if 'campaign_id' in data.columns:
+                data.fillna({"campaign_id": 0}, inplace=True)
 
-        # upserts data
-        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+            # upserts data
+            postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+        except Exception as error:
+            logger.error(error)
 
 
 def update_all_data(
@@ -465,14 +468,15 @@ if __name__ == '__main__':
     datetime_now = dt.datetime.now()
     day = datetime_now.day
     hour = datetime_now.hour
+    date_today = dt.date.today()
 
     for account in tenants.keys():
         # Updates 90 days at the start of the month
         if day == 1 and hour == 1:
             logger.info("-UPDATING SP LAST 90 DAYS-")
             start_date, end_date = (
-                dt.date.today() - dt.timedelta(days=90),
-                dt.date.today() - dt.timedelta(days=60),
+                date_today - dt.timedelta(days=90),
+                date_today - dt.timedelta(days=60),
             )
             update_all_data(start_date, end_date, 'SPONSORED_PRODUCTS', account=account)
             logger.info("-UPDATING SP, SB & SD LAST 60 DAYS-")
@@ -483,15 +487,15 @@ if __name__ == '__main__':
             )
             logger.info("-UPDATING SP, SB & SD LAST 30 DAYS-")
             update_all_data(
-                start_date + dt.timedelta(days=60), dt.date.today(), account=account
+                start_date + dt.timedelta(days=60), date_today, account=account
             )
 
         # Updates last 30 days at the middle of the month
         elif day == 15 and hour == 1:
             logger.info("-UPDATING SP, SB & SD LAST 30 DAYS-")
             start_date, end_date = (
-                dt.date.today() - dt.timedelta(days=30),
-                dt.date.today(),
+                date_today - dt.timedelta(days=30),
+                date_today,
             )
             update_all_data(start_date, end_date, account=account)
 
@@ -499,8 +503,8 @@ if __name__ == '__main__':
         elif day not in (1, 15) and hour == 1:
             logger.info("-UPDATING SP, SB & SD LAST 7 DAYS-")
             start_date, end_date = (
-                dt.date.today() - dt.timedelta(days=7),
-                dt.date.today(),
+                date_today - dt.timedelta(days=7),
+                date_today,
             )
             update_all_data(start_date, end_date, account=account)
 
@@ -508,8 +512,8 @@ if __name__ == '__main__':
         elif day not in (1, 15) and hour != 1:
             logger.info("-UPDATING SP Campaigns & Advertised Product LAST 2 DAYS-")
             start_date, end_date = (
-                dt.date.today() - dt.timedelta(days=1),
-                dt.date.today(),
+                date_today - dt.timedelta(days=1),
+                date_today,
             )
             update_data(
                 'SPONSORED_PRODUCTS',

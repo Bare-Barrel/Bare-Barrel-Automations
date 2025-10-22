@@ -31,7 +31,7 @@ def get_competitive_pricing(asin_list, customer_type='Consumer', item_condition=
         combined_data (pd.DataFrame)
     """
     print(marketplace)
-    logger.info(f"Getting {item_condition} Competitve {customer_type} Pricing of {len(asin_list)} ASINs {account}-{marketplace}")
+    logger.info(f"Getting {item_condition} Competitive {customer_type} Pricing of {len(asin_list)} ASINs {account}-{marketplace}")
     combined_data = pd.DataFrame()
     # Makes call for every 20 asins
     max_asins = 20

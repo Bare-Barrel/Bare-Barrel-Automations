@@ -59,7 +59,7 @@ def load_all_inbound_plans(account='Bare Barrel', marketplace='US', **kwargs):
 def get_all_shipments(account='Bare Barrel', marketplaces=['US', 'UK'], **kwargs):
     """
     Gets & combines all inbound shipments top level details. Uses version v0.
-    Marketplaces are by aggregated by region. E.g. US & CA are the the same.
+    Marketplaces are aggregated by region. E.g. US & CA are the the same.
     https://developer-docs.amazon.com/sp-api/docs/fulfillment-inbound-api-v0-reference#getshipments
 
     Args:
@@ -98,7 +98,7 @@ def get_all_shipments(account='Bare Barrel', marketplaces=['US', 'UK'], **kwargs
 def get_all_shipment_items(account='Bare Barrel', marketplaces=['US', 'UK'], **kwargs):
     """
     Gets & combines all inbound shipments items. Uses version v0.
-    Marketplaces are by aggregated by region. E.g. US & CA are the the same.
+    Marketplaces are aggregated by region. E.g. US & CA are the the same.
     https://developer-docs.amazon.com/sp-api/docs/fulfillment-inbound-api-v0-reference#getshipmentitems
 
 
@@ -138,7 +138,7 @@ def get_all_inbound_plans(account='Bare Barrel', marketplaces=['US', 'UK'], stat
     """
     Provides a list of inbound plans with minimal information.
     Gets and combined all inbound plans. Uses version 2024-03-20.
-    Marketplaces are by aggregated by region. E.g. US & CA are the the same.
+    Marketplaces are aggregated by region. E.g. US & CA are the the same.
     https://developer-docs.amazon.com/sp-api/docs/fulfillment-inbound-api-v2024-03-20-reference#listinboundplans
 
     Args:
@@ -146,7 +146,7 @@ def get_all_inbound_plans(account='Bare Barrel', marketplaces=['US', 'UK'], stat
                         Min 10 (default) Max 30.
         paginationToken (str): A token to fetch a certain page when there are multiple pages worth of results.
                                 The value of this token is fetched from the pagination return in the API response.
-                                In the abscense of the token value from the query parameter the API returns the first page of the result.
+                                In the absence of the token value from the query parameter the API returns the first page of the result.
         statuses (str|list): ACTIVE (default) - An inbound plan that is being worked on.
                         VOIDED - An inbound plan with all shipment cancelled and can no longer be modified.
                         SHIPPED - A complete inbound plan. Only minor modifications can be made at this time.
