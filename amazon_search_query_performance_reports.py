@@ -1,18 +1,20 @@
 import datetime as dt
-from sp_api.base import Marketplaces
+# from sp_api.base import Marketplaces
 from amazon_reports import request_report, get_report, download_report
 from sp_api.base.reportTypes import ReportType
 from sp_api.base.exceptions import SellingApiRequestThrottledException
 import time
 import pandas as pd
 import postgresql
-import requests
+# import requests
 import gzip
 import json
 from utility import get_day_of_week, to_list
 import logging
 import logger_setup
-import os
+# import os
+import argparse
+
 
 logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
@@ -29,7 +31,7 @@ def request_reports(asin, start_date, end_date, account='Bare Barrel', marketpla
 
     asin - (Required) The Amazon Standard Identification Number (ASIN) for which you want data.
     reportPeriod - Specifies the reporting period for the report. Values include WEEK, MONTH, and QUARTER. Example: "reportOptions":{"reportPeriod": "WEEK"}
-    Requests must include the reportPeriod in the reportsOptions. Use the dataStartTimeand dataEndTime parameters to specify the date boundaries for the report. The dataStartTime and dataEndTime values must correspond to valid first and last days in the specified reportPeriod. For example, dataStartTime** must be a Sunday and dataEndTime must be a Saturday when reportPeriod=WEEK.
+    Requests must include the reportPeriod in the reportsOptions. Use the dataStartTime and dataEndTime parameters to specify the date boundaries for the report. The dataStartTime and dataEndTime values must correspond to valid first and last days in the specified reportPeriod. For example, dataStartTime** must be a Sunday and dataEndTime must be a Saturday when reportPeriod=WEEK.
     """
     # Gets Sunday & Saturday
     start_date = get_day_of_week(start_date, 'Sunday')
@@ -89,8 +91,8 @@ def download_combine_reports(report_ids, account='Bare Barrel', marketplace='US'
     return combined_data
 
 
-def update_data(start_date, end_date, asins='All', account='Bare Barrel', marketplaces=['US', 'CA', 'UK']):
-    logger.info(f"Updating SQP data {asins} {account}-{marketplaces} {start_date} - {end_date}")
+def update_data(start_date, end_date, asins='All', account='Bare Barrel', marketplace='US'):
+    logger.info(f"Updating SQP data {asins} {account}-{marketplace} {start_date} - {end_date}")
 
     def get_asins(start_date, end_date, account, marketplace):
         with postgresql.setup_cursor() as cur:
@@ -109,30 +111,50 @@ def update_data(start_date, end_date, asins='All', account='Bare Barrel', market
 
     # Requests report
     marketplace_report_ids = {}
+    marketplace_report_ids[marketplace] = []
 
-    for marketplace in to_list(marketplaces):
-        marketplace_report_ids[marketplace] = []
+    if asins == 'All':
+        # Gets all active ASINs
+        asins = get_asins(start_date, end_date, account, marketplace)
+        logger.info(f"Getting all active ASINs in {account}-{marketplace} {start_date} - {end_date}")
 
-        if asins == 'All':
-            # Gets all active ASINs
-            asins = get_asins(start_date, end_date, account, marketplace)
-            logger.info(f"Getting all active ASINs in {account}-{marketplace} {start_date} - {end_date}")
-
-        for asin in to_list(asins):
-            report_ids = request_reports(asin, start_date, end_date, account=account, marketplace=marketplace)
-            marketplace_report_ids[marketplace] += report_ids
+    for asin in to_list(asins):
+        report_ids = request_reports(asin, start_date, end_date, account=account, marketplace=marketplace)
+        marketplace_report_ids[marketplace] += report_ids
 
     # Downloads, cleans & combines report
     data = pd.DataFrame()
 
-    for marketplace in to_list(marketplaces):
-        report_ids = marketplace_report_ids[marketplace]
-        df = download_combine_reports(report_ids, account=account, marketplace=marketplace)
-        data = pd.concat([data, df], ignore_index=True)
+    report_ids = marketplace_report_ids[marketplace]
+    df = download_combine_reports(report_ids, account=account, marketplace=marketplace)
+    data = pd.concat([data, df], ignore_index=True)
 
     postgresql.upsert_bulk(table_name, data, file_extension='pandas')
 
-    # return data
+
+def parse_args():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Request reports for a specific account."
+    )
+    parser.add_argument(
+        "--account",
+        type=str,
+        choices=["Bare Barrel", "Rymora"],
+        required=True,
+        default="Bare Barrel",
+        help="Name of the account to process ('Bare Barrel', 'Rymora')"
+    )
+    parser.add_argument(
+        "--marketplace",
+        type=str,
+        choices=["US", "CA", "UK"],
+        required=True,
+        default="US",
+        help="Name of the marketplace to process ('US', 'CA', 'UK')"
+    )
+
+    return parser.parse_args()
 
 
 if __name__ == '__main__':
@@ -140,5 +162,6 @@ if __name__ == '__main__':
     end_date = get_day_of_week(last_week, 'Saturday')
     start_date = end_date - dt.timedelta(weeks=2)
 
-    for account in tenants.keys():
-        update_data(start_date, end_date, asins='All', account=account)
+    args = parse_args()
+
+    update_data(start_date, end_date, asins='All', account=args.account, marketplace=args.marketplace)
