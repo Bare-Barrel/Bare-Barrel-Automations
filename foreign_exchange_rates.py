@@ -1,7 +1,8 @@
 import requests
 import pandas as pd
-import datetime as dt
+from datetime import date, timedelta
 import pandas_gbq
+from google.cloud import bigquery
 from decimal import Decimal
 import json
 import logging
@@ -59,7 +60,7 @@ def payload_to_dataframe(payload):
             rows.append(
                 {
                     "date": pd.to_datetime(date_str),
-                    "source": source,
+                    "base": source,
                     "target": target[-3:],
                     "rate": rate,
                 }
@@ -88,6 +89,34 @@ def load_to_bigquery(df, table_id, project_id):
         logger.info("Error loading data to BigQuery:", e)
 
 
+def remove_duplicates(project_id):
+    """
+    Recreates table after removing duplicates relative to date, source, and target columns and orders by date.
+    """
+
+    try:
+        logger.info("Removing duplicates in BigQuery table...")
+        client = bigquery.Client(project=project_id)
+
+        sql = """
+        CREATE OR REPLACE TABLE exchangerate_host.exchange_rates AS
+        SELECT date, base, target, rate
+        FROM (
+            SELECT *,
+                ROW_NUMBER() OVER (PARTITION BY date, base, target ORDER BY date ASC) AS rn_num
+            FROM exchangerate_host.exchange_rates
+        )
+        WHERE rn_num = 1
+        ORDER BY date ASC, target ASC;
+        """
+
+        query_job = client.query(sql)
+        query_job.result()  # wait for completion
+        logger.info("Done removing duplicates.")
+    except Exception as e:
+        logger.info("Error removing duplicates on BigQuery table:", e)
+
+
 if __name__ == '__main__':
     """
     currency_from should be a currency code string, e.g., "USD".
@@ -96,15 +125,16 @@ if __name__ == '__main__':
     currency_from = "USD"
     currency_to = "CAD,GBP"
     # start_date = dt.datetime(2025, 1, 1, 0, 0, 0, tzinfo=dt.timezone.utc).strftime("%Y-%m-%d")
-    start_date = dt.date.today().strftime("%Y-%m-%d")
-    end_date = dt.date.today().strftime("%Y-%m-%d")
+    start_date = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+    end_date = date.today().strftime("%Y-%m-%d")
+    table_id = "modern-sublime-383117.exchangerate_host.exchange_rates"
+    project_id = "modern-sublime-383117"
 
     payload = fetch_rates(currency_from, currency_to, start_date, end_date)
 
     df = payload_to_dataframe(payload)
 
-    table_id = "modern-sublime-383117.exchangerate_host.exchange_rates"
-    project_id = "modern-sublime-383117"
-
     if not df.empty:
         load_to_bigquery(df, table_id=table_id, project_id=project_id)
+    
+    remove_duplicates(project_id=project_id)
