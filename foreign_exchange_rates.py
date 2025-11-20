@@ -121,6 +121,7 @@ if __name__ == '__main__':
     """
     currency_from should be a currency code string, e.g., "USD".
     currency_to should be currency code/s in string, comma-delimited, e.g., "CAD,GBP"
+    By default, it updates data for yesterday and today.
     """
     currency_from = "USD"
     currency_to = "CAD,GBP"
