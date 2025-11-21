@@ -60,7 +60,7 @@ def payload_to_dataframe(payload):
         for target, rate in rate_dict.items():
             rows.append(
                 {
-                    "date": pd.to_datetime(date_str),
+                    "recorded_at": pd.to_datetime(date_str),
                     "base": source,
                     "target": target[-3:],
                     "rate": rate,
@@ -69,7 +69,7 @@ def payload_to_dataframe(payload):
 
     df = pd.DataFrame(rows)
     df["rate"] = df["rate"].apply(lambda x: Decimal(str(x)))
-    df = df.sort_values(by='date')
+    df = df.sort_values(by='recorded_at')
 
     logger.info("Done converting API response to pandas DataFrame.")
 
@@ -97,7 +97,7 @@ def load_to_bigquery(df, table_id, project_id):
 
 def remove_duplicates(project_id):
     """
-    Recreates table after removing duplicates relative to date, source, and target columns and orders by date.
+    Recreates table after removing duplicates relative to recorded_at, source, and target columns and orders by recorded_at.
     """
 
     try:
@@ -106,14 +106,14 @@ def remove_duplicates(project_id):
 
         sql = """
         CREATE OR REPLACE TABLE exchangerate_host.exchange_rates AS
-        SELECT date, base, target, rate
+        SELECT recorded_at, base, target, rate
         FROM (
             SELECT *,
-                ROW_NUMBER() OVER (PARTITION BY date, base, target ORDER BY date ASC) AS rn_num
+                ROW_NUMBER() OVER (PARTITION BY recorded_at, base, target ORDER BY recorded_at ASC) AS rn_num
             FROM exchangerate_host.exchange_rates
         )
         WHERE rn_num = 1
-        ORDER BY date ASC, target ASC;
+        ORDER BY recorded_at ASC, target ASC;
         """
 
         query_job = client.query(sql)
