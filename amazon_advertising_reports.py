@@ -509,7 +509,8 @@ if __name__ == '__main__':
             update_all_data(start_date, end_date, account=account)
 
         # Updates reports in `campaign` & `advertised_product` every hour
-        elif day not in (1, 15) and hour != 1:
+        # elif day not in (1, 15) and hour != 1:
+        elif hour != 1:
             logger.info("-UPDATING SP Campaigns & Advertised Product LAST 2 DAYS-")
             start_date, end_date = (
                 date_today - dt.timedelta(days=1),
