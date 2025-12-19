@@ -230,7 +230,7 @@ def get_all_inbound_plans_info(account='Bare Barrel', marketplaces=['US', 'UK'],
 
             # Doesn't currently support AWD or cross border Amazon Global Logistics
             # How to determine if it's from AWD or AGL???
-            except (SellingApiBadRequestException, SellingApiNotFoundException) as error:
+            except (SellingApiBadRequestException, SellingApiNotFoundException, SellingApiException) as error:
                 logger.warning(error)
 
     inbound_data.rename(columns={'createdAt': 'date_created_at'}, inplace=True)
