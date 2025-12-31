@@ -109,10 +109,10 @@ def remove_duplicates(project_id):
         SELECT recorded_at, base, target, rate
         FROM (
             SELECT *,
-                ROW_NUMBER() OVER (PARTITION BY recorded_at, base, target ORDER BY recorded_at ASC) AS rn_num
+                ROW_NUMBER() OVER (PARTITION BY recorded_at, base, target ORDER BY recorded_at ASC) AS row_num
             FROM exchangerate_host.exchange_rates
         )
-        WHERE rn_num = 1
+        WHERE row_num = 1
         ORDER BY recorded_at ASC, target ASC;
         """
 
