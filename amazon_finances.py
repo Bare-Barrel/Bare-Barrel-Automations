@@ -97,7 +97,7 @@ if __name__ == '__main__':
     lookback_180 = 180 # lookback window for daily
     lookback_730 = 730 # lookback window for weekly
 
-    date_today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    date_today = dt.datetime.now(dt.timezone.utc).date()
     weekday_num = dt.datetime.today().weekday()
     hour = dt.datetime.now().hour
 
@@ -113,8 +113,8 @@ if __name__ == '__main__':
                     account,
                     marketplace,
                     MarketplaceId = Marketplaces[marketplace].value,
-                    PostedAfter = posted_after,
-                    PostedBefore = posted_before,
+                    PostedAfter = posted_after.isoformat(),
+                    PostedBefore = posted_before.isoformat(),
                     MaxResultsPerPage = 100
                     )
                 
@@ -132,8 +132,8 @@ if __name__ == '__main__':
                     account,
                     marketplace,
                     MarketplaceId = Marketplaces[marketplace].value,
-                    PostedAfter = posted_after,
-                    PostedBefore = posted_before,
+                    PostedAfter = posted_after.isoformat(),
+                    PostedBefore = posted_before.isoformat(),
                     MaxResultsPerPage = 100
                     )
                 
