@@ -97,7 +97,7 @@ if __name__ == '__main__':
     lookback_180 = 180 # lookback window for daily
     lookback_730 = 730 # lookback window for weekly
 
-    date_today = dt.date.today(dt.timezone.utc).isoformat()
+    date_today = dt.datetime.now(dt.timezone.utc).date().isoformat()
     weekday_num = dt.datetime.today().weekday()
     hour = dt.datetime.now().hour
 
