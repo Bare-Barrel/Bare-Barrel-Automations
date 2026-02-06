@@ -104,15 +104,15 @@ def update_data(account='Bare Barrel', marketplaces=['US', 'CA', 'UK'], **kwargs
         postgresql.upsert_bulk(order_items_table, order_items_data, file_extension='pandas')
 
 
-def create_orders_table(drop_table_if_exists=False):
-    # creates table initially
-    with postgresql.setup_cursor() as cur:
-        if drop_table_if_exists:
-            cur.execute(f"DROP TABLE IF EXISTS {orders_table};")
+# def create_orders_table(drop_table_if_exists=False):
+#     # creates table initially
+#     with postgresql.setup_cursor() as cur:
+#         if drop_table_if_exists:
+#             cur.execute(f"DROP TABLE IF EXISTS {orders_table};")
 
-        postgresql.create_table(cur, data, table_name=orders_table, file_extension='json_normalize', keys='PRIMARY KEY (amazon_order_id)')
-        postgresql.update_updated_at_trigger(cur, orders_table)
-        postgresql.upsert_bulk(orders_table, data, file_extension='json_normalize')
+#         postgresql.create_table(cur, data, table_name=orders_table, file_extension='json_normalize', keys='PRIMARY KEY (amazon_order_id)')
+#         postgresql.update_updated_at_trigger(cur, orders_table)
+#         postgresql.upsert_bulk(orders_table, data, file_extension='json_normalize')
 
 
 def create_order_items_table(drop_table_if_exists=False):
