@@ -199,7 +199,7 @@ def update_data():
     
     # Combine dataframes
     final_df = pd.concat(dfs, ignore_index=True)
-    final_df.to_csv("output.csv", index=False, encoding="utf-8")
+    # final_df.to_csv("output.csv", index=False, encoding="utf-8")
 
     # Load data to BigQuery
     table_id = "modern-sublime-383117.mintsoft_api.warehouse_stock_levels"
