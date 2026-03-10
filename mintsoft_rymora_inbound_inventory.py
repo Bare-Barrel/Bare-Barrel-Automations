@@ -50,7 +50,7 @@ def get_product_ids(account):
         sql = f"""
             SELECT DISTINCT product_id
             FROM `{PROJECT_ID}.{SOURCE_DATASET}.{SOURCE_TABLE}`
-            WHERE product_id IS NOT NULL AND account_name = "{account["account_name"]}"
+            WHERE product_id IS NOT NULL AND account_name = "{account['account_name']}"
             """
 
         query_job = client.query(sql)
@@ -129,7 +129,7 @@ def fetch_inbound_inventory(account, product_id):
         return None
 
     except Exception as e:
-        logger.info(f"Request failed for account {account["account_name"]} and Product ID {product_id}: {e}")
+        logger.info(f"Request failed for account {account['account_name']} and Product ID {product_id}: {e}")
         return None
 
 
