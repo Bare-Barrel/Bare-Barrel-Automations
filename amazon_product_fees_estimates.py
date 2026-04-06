@@ -187,11 +187,11 @@ def update_data():
 
     fba_fees_df = fetch_fba_fees(sku_df)
     
-    fba_fees_df.to_csv("output.csv", index=False, encoding="utf-8")
+    # fba_fees_df.to_csv("output.csv", index=False, encoding="utf-8")
 
     # Load data to BigQuery
-    # table_id = f"{PROJECT_ID}.{DEST_DATASET}.{DEST_TABLE}"
-    # bigquery_utils.load_to_bigquery(fba_fees_df, table_id, PROJECT_ID, "append")
+    table_id = f"{PROJECT_ID}.{DEST_DATASET}.{DEST_TABLE}"
+    bigquery_utils.load_to_bigquery(fba_fees_df, table_id, PROJECT_ID, "append")
 
 
 if __name__ == '__main__':
