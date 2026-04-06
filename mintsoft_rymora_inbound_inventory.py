@@ -154,7 +154,7 @@ def update_data():
 
     flattened_results = [item for sublist in all_results for item in sublist]
     df = pd.DataFrame(flattened_results)
-    df["recorded_at"] = pd.Timestamp.utcnow()
+    df["recorded_at"] = pd.Timestamp.now(tz="UTC")
 
     # Sort by SKU
     df = df.sort_values(
@@ -162,7 +162,7 @@ def update_data():
         ascending = [True, True]
     )
 
-    df.to_csv("output.csv", index=False, encoding="utf-8")
+    # df.to_csv("output.csv", index=False, encoding="utf-8")
 
     # Load data to BigQuery
     table_id = f"{PROJECT_ID}.{DEST_DATASET}.{DEST_TABLE}"
