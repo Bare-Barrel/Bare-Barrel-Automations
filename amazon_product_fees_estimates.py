@@ -120,6 +120,8 @@ def fetch_fba_fees(df):
                             "tenant_id": tenant_id,
                             "marketplace": marketplace,
                             "sku": res.get("FeesEstimateIdentifier", {}).get("IdValue"),
+                            "price_to_estimate_fees_amount": res.get("FeesEstimateIdentifier", {}).get("PriceToEstimateFees", {}).get("ListingPrice", {}).get("Amount"),
+                            "price_to_estimate_fees_currency_code": res.get("FeesEstimateIdentifier", {}).get("PriceToEstimateFees", {}).get("ListingPrice", {}).get("CurrencyCode"),
                             "fees_estimated_at": None,
                             "est_total_fees": None,
                             "est_referral_fee": None,
@@ -157,6 +159,8 @@ def fetch_fba_fees(df):
                         "tenant_id": tenant_id,
                         "marketplace": marketplace,
                         "sku": sku,
+                        "price_to_estimate_fees_amount": res.get("FeesEstimateIdentifier", {}).get("PriceToEstimateFees", {}).get("ListingPrice", {}).get("Amount"),
+                        "price_to_estimate_fees_currency_code": res.get("FeesEstimateIdentifier", {}).get("PriceToEstimateFees", {}).get("ListingPrice", {}).get("CurrencyCode"),
                         "fees_estimated_at": fees_estimated_at,
                         "est_total_fees": total_fees,
                         "est_referral_fee": referral_fee,
@@ -186,8 +190,8 @@ def update_data():
     fba_fees_df.to_csv("output.csv", index=False, encoding="utf-8")
 
     # Load data to BigQuery
-    table_id = f"{PROJECT_ID}.{DEST_DATASET}.{DEST_TABLE}"
-    bigquery_utils.load_to_bigquery(fba_fees_df, table_id, PROJECT_ID, "append")
+    # table_id = f"{PROJECT_ID}.{DEST_DATASET}.{DEST_TABLE}"
+    # bigquery_utils.load_to_bigquery(fba_fees_df, table_id, PROJECT_ID, "append")
 
 
 if __name__ == '__main__':
