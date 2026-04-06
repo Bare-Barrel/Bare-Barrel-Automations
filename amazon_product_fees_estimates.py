@@ -18,7 +18,7 @@ PROJECT_ID = "modern-sublime-383117"
 SOURCE_DATASET = "listings_items"
 SOURCE_TABLE = "offers"
 DEST_DATASET = "product_fees"
-DEST_TABLE = "product_fees_estimate"
+DEST_TABLE = "product_fees_estimates"
 
 
 def get_sku_list():
