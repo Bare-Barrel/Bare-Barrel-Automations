@@ -8,11 +8,11 @@ import logger_setup
 from google.cloud import bigquery
 import bigquery_utils
 
+
 logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
-table_name = 'business_reports.fba_fee_preview'
-tenants = bigquery_utils.get_tenants()
+TENANTS = bigquery_utils.get_tenants()
 
 PROJECT_ID = "modern-sublime-383117"
 SOURCE_DATASET = "listings_items"
@@ -92,7 +92,7 @@ def fetch_fba_fees(df):
     # Group by tenant + marketplace
     grouped = df.groupby(["tenant_id", "marketplace"])
 
-    reverse_tenants = {v: k for k, v in tenants.items()}
+    reverse_tenants = {v: k for k, v in TENANTS.items()}
 
     for (tenant_id, marketplace), group_df in grouped:
 
