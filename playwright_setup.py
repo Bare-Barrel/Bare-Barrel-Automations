@@ -96,7 +96,15 @@ async def login_amazon(page, account='Bare Barrel'):
             logger.info("Inputting Two-factor verification")
             totp = pyotp.TOTP(config['amazon_secret_key'])
             current_code = totp.now()
-            await page.locator('input[id="auth-mfa-otpcode"]').fill(current_code)
+            # await page.locator('input[id="auth-mfa-otpcode"]').fill(current_code)
+            mfa_input = page.locator('input[id="auth-mfa-otpcode"]')
+
+            if await mfa_input.is_visible(timeout=10000):
+                logger.info("MFA input detected, entering code")
+                await mfa_input.fill(current_code)
+            else:
+                logger.info("No MFA input detected, continuing login flow")
+
             await page.keyboard.press('Enter')
 
         # selects store account and country
@@ -118,7 +126,14 @@ async def login_amazon(page, account='Bare Barrel'):
         "Rymora": "?mons_sel_dir_mcid=amzn1.merchant.d.AD4TZW65NWB7A474I7YLXVUEJE7A&mons_sel_mkid=amzn1.mp.o.ATVPDKIKX0DER&mons_sel_dir_paid=amzn1.pa.d.AASAAFP3UIBK2Z23PIYPF57OUMLQ&ignore_selection_changed=true",
     }
 
-    await page.wait_for_url("**/home**")
+    # await page.wait_for_url("**/home**")
+    # Wait for either success OR still being stuck in MFA
+    try:
+        await page.wait_for_url("**sellercentral.amazon.com/**", timeout=30000)
+    except:
+        current_url = page.url
+        logger.warning(f"Still not redirected after MFA. Current URL: {current_url}")
+
 
     logger.info(f"Going to {account}'s Home Page")
     await page.goto("https://sellercentral.amazon.com/home" + params[account])
