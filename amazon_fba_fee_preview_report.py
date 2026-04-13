@@ -70,7 +70,8 @@ def download_combine_reports(report_ids, account='Bare Barrel', marketplace='US'
             data.insert(0, 'date', dt.date.today())
             combined_data = pd.concat([data, combined_data], ignore_index=True)
 
-    combined_data.replace("--", np.nan, inplace=True)                                        
+    # combined_data.replace("--", np.nan, inplace=True)     
+    combined_data.replace({"--": np.nan, "": np.nan}, inplace=True)
 
     return combined_data
 
