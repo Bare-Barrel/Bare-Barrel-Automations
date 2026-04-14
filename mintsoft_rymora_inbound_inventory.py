@@ -132,34 +132,12 @@ def fetch_inbound_inventory(account, product_id):
         return None
 
 
-def already_loaded_today():
-    client = bigquery.Client(project=PROJECT_ID)
-
-    sql = f"""
-        SELECT MAX(DATE(recorded_at)) AS max_date
-        FROM `{PROJECT_ID}.{DEST_DATASET}.{DEST_TABLE}`
-    """
-
-    query_job = client.query(sql)
-    result = list(query_job.result())
-
-    if result and result[0].max_date:
-        max_date = result[0].max_date
-        today_utc = pd.Timestamp.now(tz="UTC").date()
-
-        logger.info(f"Max date in table: {max_date}, Today (UTC): {today_utc}")
-
-        return max_date == today_utc
-
-    return False
-
-
 def update_data():
     """
     Updates inbound inventory data from Mintsoft for Allegro MAIN and REWORK.
     """
     # Guard clause
-    if already_loaded_today():
+    if bigquery_utils.already_loaded_today(PROJECT_ID, DEST_DATASET, DEST_TABLE):
         logger.info("Data for today already exists. Skipping execution.")
         return
 
