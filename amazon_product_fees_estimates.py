@@ -108,6 +108,7 @@ def fetch_fba_fees(df):
                         marketplace=Marketplaces[marketplace]
                     ).get_product_fees_estimate(requests)
 
+                # Check if data was fetched successfully
                 for res in response.payload:
                     if res.get("Status") != "Success":
                         error = res.get("Error", {})
@@ -183,6 +184,11 @@ def fetch_fba_fees(df):
 
 
 def update_data():
+    # Guard clause
+    if bigquery_utils.already_loaded_today(PROJECT_ID, DEST_DATASET, DEST_TABLE):
+        logger.info("Data for today already exists. Skipping execution.")
+        return
+
     sku_df = get_sku_list()
 
     fba_fees_df = fetch_fba_fees(sku_df)

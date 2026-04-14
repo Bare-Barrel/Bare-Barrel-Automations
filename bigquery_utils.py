@@ -3,6 +3,7 @@ from google.auth import default as google_auth_default
 from google.cloud import bigquery
 import logging
 import logger_setup
+import pandas as pd
 
 
 logger_setup.setup_logging(__file__)
@@ -50,3 +51,25 @@ def get_tenants():
 
     except Exception as e:
         logger.info("Error getting tenants: ", e)
+
+
+def already_loaded_today(project_id, dest_dataset, dest_table):
+    client = bigquery.Client(project=PROJECT_ID)
+
+    sql = f"""
+        SELECT MAX(DATE(recorded_at)) AS max_date
+        FROM `{project_id}.{dest_dataset}.{dest_table}`
+    """
+
+    query_job = client.query(sql)
+    result = list(query_job.result())
+
+    if result and result[0].max_date:
+        max_date = result[0].max_date
+        today_utc = pd.Timestamp.now(tz="UTC").date()
+
+        logger.info(f"Max date in table: {max_date}, Today (UTC): {today_utc}")
+
+        return max_date == today_utc
+
+    return False
