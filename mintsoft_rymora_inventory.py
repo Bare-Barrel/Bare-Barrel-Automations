@@ -1,10 +1,10 @@
 import requests
 import pandas as pd
-import pandas_gbq
-from google.auth import default as google_auth_default
+from google.cloud import bigquery
 import json
 import logging
 import logger_setup
+import bigquery_utils
 
 
 logger_setup.setup_logging(__file__)
@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 with open("config.json") as f:
     config = json.load(f)
+
+PROJECT_ID = "modern-sublime-383117"
+DEST_DATASET = "mintsoft_api"
+DEST_TABLE = "warehouse_stock_levels"
 
 
 def generate_api_key(username: str, password: str) -> str:
@@ -112,8 +116,7 @@ def json_to_dataframe(json_response, account_name, warehouse_name):
     # Add fields
     df["warehouse_name"] = warehouse_name
     df["account_name"] = account_name
-    recorded_at = pd.Timestamp.utcnow()
-    df["recorded_at"] = recorded_at
+    df["recorded_at"] = pd.Timestamp.now(tz="UTC")
 
     # Sort by SKU
     df = df.sort_values(
@@ -126,23 +129,26 @@ def json_to_dataframe(json_response, account_name, warehouse_name):
     return df
 
 
-def load_to_bigquery(df, table_id: str, project_id: str = "modern-sublime-383117"):
+def already_loaded_today():
+    client = bigquery.Client(project=PROJECT_ID)
+
+    sql = f"""
+        SELECT MAX(DATE(recorded_at)) AS max_date
+        FROM `{PROJECT_ID}.{DEST_DATASET}.{DEST_TABLE}`
     """
-    Load dataframe to a BigQuery table.
-    """
-    try:
-        logger.info("Loading DataFrame to BigQuery...")
-        credentials, project = google_auth_default()
-        pandas_gbq.to_gbq(
-            df, 
-            destination_table=table_id, 
-            project_id=project_id, 
-            credentials=credentials,    # automatically loaded from env
-            if_exists='append'
-        )
-        logger.info("Data loaded successfully.")
-    except Exception as e:
-        logger.info("Error loading data to BigQuery:", e)
+
+    query_job = client.query(sql)
+    result = list(query_job.result())
+
+    if result and result[0].max_date:
+        max_date = result[0].max_date
+        today_utc = pd.Timestamp.now(tz="UTC").date()
+
+        logger.info(f"Max date in table: {max_date}, Today (UTC): {today_utc}")
+
+        return max_date == today_utc
+
+    return False
 
 
 def update_data():
@@ -150,6 +156,11 @@ def update_data():
     Updates inventory data from Mintsoft.
     TSP API Key renews daily while others never expire.
     """
+    # Guard clause
+    if already_loaded_today():
+        logger.info("Data for today already exists. Skipping execution.")
+        return
+
     tsp_user = config["mintsoft_tsp_username"]
     tsp_pwd = config["mintsoft_tsp_password"]
 
@@ -199,11 +210,12 @@ def update_data():
     
     # Combine dataframes
     final_df = pd.concat(dfs, ignore_index=True)
+
     # final_df.to_csv("output.csv", index=False, encoding="utf-8")
 
     # Load data to BigQuery
-    table_id = "modern-sublime-383117.mintsoft_api.warehouse_stock_levels"
-    load_to_bigquery(final_df, table_id)
+    table_id = f"{PROJECT_ID}.{DEST_DATASET}.{DEST_TABLE}"
+    bigquery_utils.load_to_bigquery(final_df, table_id, PROJECT_ID, "append")
 
 
 if __name__ == "__main__":
