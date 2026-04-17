@@ -1,11 +1,9 @@
-from datetime import datetime, timedelta
 from sp_api.base import Marketplaces
 from sp_api.api import Inventories
 from sp_api.util import throttle_retry, load_all_pages
 from utility import to_list
 import postgresql
 import pandas as pd
-import io
 import datetime as dt
 import pytz
 import logging

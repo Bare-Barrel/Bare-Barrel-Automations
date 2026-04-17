@@ -1,5 +1,4 @@
 import datetime as dt
-from sp_api.base import Marketplaces
 from amazon_reports import request_report, get_report, download_report
 from sp_api.base.reportTypes import ReportType
 from sp_api.base.exceptions import SellingApiRequestThrottledException
@@ -11,6 +10,7 @@ import logging
 import logger_setup
 from utility import to_list
 from io import BytesIO
+
 
 logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)

@@ -1,6 +1,4 @@
-import datetime as dt
 from sp_api.base.reportTypes import ReportType
-from sp_api.base import Marketplaces
 from utility import to_list, reposition_columns
 from amazon_reports import request_report, get_report, download_report
 import time
@@ -9,6 +7,7 @@ import postgresql
 import logging
 import logger_setup
 from io import StringIO
+
 
 logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)

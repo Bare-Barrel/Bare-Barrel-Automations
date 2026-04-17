@@ -1,6 +1,5 @@
 import requests
 import pandas as pd
-from google.cloud import bigquery
 import json
 import logging
 import logger_setup

@@ -1,17 +1,15 @@
 import datetime as dt
-from sp_api.api import ReportsV2
 from sp_api.base.reportTypes import ReportType
-from sp_api.base import Marketplaces
-from utility import to_list, reposition_columns
+from utility import to_list
 from amazon_reports import request_report, get_report, download_report
 import time
 import pandas as pd
 import postgresql
-import requests
 import gzip
 import json
 import logging
 import logger_setup
+
 
 logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
@@ -84,7 +82,7 @@ def download_combine_reports(start_date, end_date, account, marketplace,  asin_g
 
 
 def update_data(asin_granularity='PARENT', account='Bare Barrel', marketplaces=['US', 'CA', 'UK'], 
-                start_date=(dt.datetime.utcnow() - dt.timedelta(days=7)), end_date=(dt.datetime.utcnow() - dt.timedelta(days=1))):
+                start_date=(dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=7)), end_date=(dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1))):
     for marketplace in to_list(marketplaces):
         logger.info(f"Updating data {asin_granularity} {account}-{marketplace} {start_date} - {end_date}")
         data = download_combine_reports(start_date, end_date, account, marketplace, asin_granularity=asin_granularity)
@@ -94,8 +92,8 @@ def update_data(asin_granularity='PARENT', account='Bare Barrel', marketplaces=[
 
 def create_table(asin_granularity, drop_table_if_exists=False):
     # Requests worth 30 days sample of data
-    start_date = (dt.datetime.utcnow() - dt.timedelta(days=5))
-    end_date = (dt.datetime.utcnow() - dt.timedelta(days=1))
+    start_date = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=5))
+    end_date = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1))
     data = download_combine_reports(start_date, end_date, 'Bare Barrel', 'US', asin_granularity=asin_granularity)
 
     table_name = base_table_name + f"_{asin_granularity.lower()}"
