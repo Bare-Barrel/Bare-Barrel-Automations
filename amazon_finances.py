@@ -2,22 +2,23 @@ from sp_api.base import Marketplaces
 from sp_api.api import Finances
 from sp_api.util import throttle_retry, load_all_pages
 from sp_api.base.exceptions import SellingApiRequestThrottledException, SellingApiServerException
-import postgresql
 import datetime as dt
 import time
 import pandas as pd
 import logging
 import logger_setup
 from utility import to_list
-import pandas_gbq
-from google.auth import default as google_auth_default
+import bigquery_utils
+
 
 logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
-project_name = "modern-sublime-383117"
-table_name = "finances.financial_events"
-tenants = postgresql.get_tenants()
+TENANTS = bigquery_utils.get_tenants()
+
+PROJECT_ID = "modern-sublime-383117"
+DEST_DATASET = "finances"
+DEST_TABLE = "financial_events"
 
 
 @throttle_retry()
@@ -63,7 +64,7 @@ def get_financial_events(account='Bare Barrel',
             df_items = df_items.drop(columns=["ShipmentItemList"])
             
             df_items["marketplace"] = marketplace
-            df_items["tenant_id"] = tenants[account]
+            df_items["tenant_id"] = TENANTS[account]
             df_items["created_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
             financial_events_data = pd.concat([financial_events_data, df_items], ignore_index=True)
             time.sleep(0.5)
@@ -71,39 +72,20 @@ def get_financial_events(account='Bare Barrel',
     return financial_events_data
 
 
-def load_to_bigquery(df, table_id, project_id):
-    """
-    Load dataframe to a BigQuery table.
-    """
-    try:
-        logger.info("Loading DataFrame to BigQuery...")
-        credentials, project = google_auth_default()
-        pandas_gbq.to_gbq(
-            df, 
-            destination_table=table_id, 
-            project_id=project_id, 
-            credentials=credentials,    # automatically loaded from env
-            if_exists='append'
-        )
-        logger.info("Data loaded successfully.")
-    except Exception as e:
-        logger.info("Error loading data to BigQuery:", e)
-
-
 if __name__ == '__main__':
     marketplaces = ['US', 'CA', 'UK']
-    # posted_after = dt.datetime(2025, 11, 1, 0, 0, 0, tzinfo=dt.timezone.utc).isoformat()
-    # posted_before = dt.datetime(2025, 12, 1, 0, 0, 0, tzinfo=dt.timezone.utc).isoformat()
     lookback_180 = 180 # lookback window for daily
     lookback_730 = 730 # lookback window for weekly
+
+    # Use this for backfilling
+    # posted_after = dt.datetime(2025, 11, 1, 0, 0, 0, tzinfo=dt.timezone.utc).isoformat()
+    # posted_before = dt.datetime(2025, 12, 1, 0, 0, 0, tzinfo=dt.timezone.utc).isoformat()
 
     date_today = dt.datetime.now(dt.timezone.utc).date()
     weekday_num = dt.datetime.today().weekday()
     hour = dt.datetime.now().hour
 
-    # account = "Rymora"
-    # marketplace = "UK"
-    for account in tenants.keys():
+    for account in TENANTS.keys():
         for marketplace in to_list(marketplaces):
             if weekday_num == 6 and hour == 5: # sunday at 5am
                 posted_after = date_today - dt.timedelta(days=lookback_730)
@@ -118,11 +100,9 @@ if __name__ == '__main__':
                     MaxResultsPerPage = 100
                     )
                 
-                load_to_bigquery(
-                    financial_events_items,
-                    table_id = project_name + "." + table_name,
-                    project_id = project_name
-                    )
+                # Load data to BigQuery
+                table_id = f"{PROJECT_ID}.{DEST_DATASET}.{DEST_TABLE}"
+                bigquery_utils.load_to_bigquery(financial_events_items, table_id, PROJECT_ID, "append")
 
             else: # daily at 3am
                 posted_after = date_today - dt.timedelta(days=lookback_180)
@@ -137,8 +117,6 @@ if __name__ == '__main__':
                     MaxResultsPerPage = 100
                     )
                 
-                load_to_bigquery(
-                    financial_events_items,
-                    table_id = project_name + "." + table_name,
-                    project_id = project_name
-                    )
+                # Load data to BigQuery
+                table_id = f"{PROJECT_ID}.{DEST_DATASET}.{DEST_TABLE}"
+                bigquery_utils.load_to_bigquery(financial_events_items, table_id, PROJECT_ID, "append")
