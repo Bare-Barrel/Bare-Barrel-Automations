@@ -1,5 +1,4 @@
 import os
-import time
 import postgresql
 import logging
 import logger_setup

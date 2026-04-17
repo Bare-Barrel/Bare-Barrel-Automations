@@ -13,7 +13,6 @@ import logger_setup
 logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
-
 with open("config.json") as f:
     config = json.load(f)
 
