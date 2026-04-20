@@ -1,16 +1,13 @@
-from playwright.sync_api import Playwright, sync_playwright
+from playwright.sync_api import Playwright
 from playwright.async_api import async_playwright, expect
 import json
 import pandas as pd
 import datetime as dt
 import re
-
-# import amazon
-# import time
 import asyncio
 import os
 import shutil
-import postgresql
+import postgresql2
 from utility import get_day_of_week, reposition_columns
 from playwright_setup import setup_playwright, login_amazon
 import logging
@@ -29,7 +26,7 @@ table_names = {
     'brand': 'brand_analytics.search_query_performance_brand_view',
 }
 
-tenants = postgresql.get_tenants()
+tenants = postgresql2.get_tenants()
 
 
 async def generate_download(
@@ -287,7 +284,10 @@ def combine_data(directory=None, file_paths=[], file_extension='.csv'):
         data['marketplace'] = re.search(r'/(\w*)_Search_Query', file_path)[1]
 
         # calculates week number, start & end date
-        data.rename(columns={'Reporting Date': 'reporting_date'}, inplace=True)
+        data.rename(columns={
+                'Search Query': 'search_query',
+                'Reporting Date': 'reporting_date'
+            }, inplace=True)
         data['reporting_date'] = pd.to_datetime(data['reporting_date'])
         data['end_date'] = data['reporting_date']
         data['start_date'] = data['end_date'] - dt.timedelta(days=6)
@@ -301,22 +301,58 @@ def combine_data(directory=None, file_paths=[], file_extension='.csv'):
                 'reporting_range': 1,
                 'marketplace': 2,
                 'asin': 3,
-                'Search Query': 4,
+                'search_query': 4,
             },
             'brand': {
                 'reporting_date': 0,
                 'reporting_range': 1,
                 'marketplace': 2,
-                'Search Query': 3,
+                'search_query': 3,
             },
         }
         data = reposition_columns(data, col_positions[view])
 
         combined_data = pd.concat([data, combined_data], ignore_index=True)
 
+    # force normalization
+    # combined_data['search_query'] = combined_data['search_query'].str.strip().str.lower()
+    combined_data['search_query'] = (
+        combined_data['search_query']
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+    combined_data['marketplace'] = combined_data['marketplace'].str.strip().str.upper()
+    combined_data['reporting_range'] = combined_data['reporting_range'].str.strip().str.lower()
+    combined_data['reporting_date'] = (
+        pd.to_datetime(combined_data['reporting_date'])
+        .dt.strftime('%Y-%m-%d')
+    )
+
     # drop duplicates on primary keys
-    pkeys = [key for key in col_positions[view]]
-    combined_data = combined_data.drop_duplicates(subset=pkeys)
+    if 'asin' in combined_data.columns:
+        pkeys = ['reporting_date', 'reporting_range', 'marketplace', 'asin', 'search_query']
+    else:
+        pkeys = ['reporting_date', 'reporting_range', 'marketplace', 'search_query']
+
+    # combined_data = (
+    #     combined_data
+    #     .sort_values("reporting_date")
+    #     .drop_duplicates(subset=pkeys, keep="last")
+    # )
+
+    # drop nulls
+    combined_data = combined_data.dropna(subset=pkeys)
+
+    # HARD dedupe
+    combined_data = combined_data.groupby(pkeys, as_index=False).last()
+
+    # debug
+    print("Final rows:", len(combined_data))
+    print("Unique keys:", len(combined_data.drop_duplicates(subset=pkeys)))
+
+    if combined_data.duplicated(subset=pkeys).any():
+        raise Exception("STILL DUPLICATES BEFORE UPSERT")
 
     return combined_data
 
@@ -362,9 +398,13 @@ async def scrape_sqp(
 
         # inserts to amazon db
         table_name = table_names[view]
+        downloaded_filepaths = list(set(downloaded_filepaths))
         data = combine_data(file_paths=downloaded_filepaths)
         data['tenant_id'] = tenants[account]
-        postgresql.upsert_bulk(table_name, data, 'pandas')
+
+        data.to_csv("output.csv", index=False, encoding="utf-8")
+
+        postgresql2.upsert_bulk(table_name, data, 'pandas')
 
         # resets download counter
         return 0
@@ -377,7 +417,7 @@ async def scrape_sqp(
                     f"Getting all active ASINs in {account}-{marketplace} {date_report}"
                 )
 
-                with postgresql.setup_cursor() as cur:
+                with postgresql2.setup_cursor() as cur:
                     cur.execute(f"""SELECT DISTINCT asin FROM listings_items.summaries 
                                         WHERE status @> ARRAY['DISCOVERABLE', 'BUYABLE'] 
                                             AND marketplace = '{marketplace}'
@@ -410,7 +450,7 @@ async def scrape_sqp(
                             )  # resets download counter to 0
 
         elif view == 'brand':
-            with postgresql.setup_cursor() as cur:
+            with postgresql2.setup_cursor() as cur:
                 cur.execute(f"""SELECT DISTINCT reporting_date FROM brand_analytics.search_query_performance_brand_view 
                                     WHERE marketplace = '{marketplace}'
                                         AND tenant_id = {tenants[account]}
@@ -452,7 +492,7 @@ def create_table(view, drop_table_if_exists=False):
     data = combine_data(sqp_directory)
 
     table_name = table_names[view]
-    with postgresql.setup_cursor() as cur:
+    with postgresql2.setup_cursor() as cur:
         if drop_table_if_exists:
             cur.execute(f"DROP TABLE IF EXISTS {table_name};")
 
@@ -461,7 +501,7 @@ def create_table(view, drop_table_if_exists=False):
             'brand': 'PRIMARY KEY (reporting_date, reporting_range, marketplace, search_query)',
         }
 
-        postgresql.create_table(
+        postgresql2.create_table(
             cur,
             data,
             file_extension='pandas',
@@ -469,9 +509,9 @@ def create_table(view, drop_table_if_exists=False):
             keys=primary_keys[view],
         )
 
-        postgresql.update_updated_at_trigger(cur, table_name)
+        postgresql2.update_updated_at_trigger(cur, table_name)
 
-        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+        postgresql2.upsert_bulk(table_name, data, file_extension='pandas')
 
 
 async def main():
@@ -479,7 +519,7 @@ async def main():
     Updates ASIN & Brand view last two weeks of data
     """
     date_today = dt.date.today()
-    # date_today = dt.date(2025,9,28)   # use this to backfill
+    # date_today = dt.date(2026,2,8)   # use this to backfill
 
     for account in tenants.keys():
         async with async_playwright() as playwright:
