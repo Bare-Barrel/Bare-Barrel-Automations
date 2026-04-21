@@ -1,5 +1,5 @@
 import os
-import postgresql
+import postgresql2
 import logging
 import logger_setup
 import pandas as pd
@@ -36,7 +36,7 @@ def clean_data(file_path):
 def update_data(file_path):
     data = clean_data(file_path)
     data = data[data['Organic Rank'].notnull()]
-    postgresql.upsert_bulk(table_name, data, 'pandas')
+    postgresql2.upsert_bulk(table_name, data, 'pandas')
 
 
 """
@@ -66,7 +66,7 @@ modification_time = dt.datetime.fromtimestamp(stat_info.st_mtime)
 query = f"""SELECT MAX(updated_at) 
             FROM {table_name};"""
 
-max_updated_date = postgresql.sql_to_dataframe(query)['max'][0]
+max_updated_date = postgresql2.sql_to_dataframe(query)['max'][0]
 
 logger.info(f"Database's latest created date: {max_updated_date}")
 logger.info(f"Metadata file's created date: {modification_time}")
