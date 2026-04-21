@@ -5,7 +5,7 @@ from sp_api.base.exceptions import SellingApiRequestThrottledException
 import time
 import pandas as pd
 import numpy as np
-import postgresql
+import postgresql2
 import logging
 import logger_setup
 from utility import to_list
@@ -16,7 +16,7 @@ logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
 table_name = 'business_reports.fba_fee_preview'
-tenants = postgresql.get_tenants()
+tenants = postgresql2.get_tenants()
 
 
 def request_reports(start_date, end_date, account='Bare Barrel', marketplace='US'):
@@ -100,8 +100,8 @@ def update_data(start_date, end_date, account='Bare Barrel', marketplaces=['US',
     data.drop_duplicates(subset=['date', 'asin', 'sku', 'fnsku', 'amazon-store'], 
                          keep='first', inplace=True)
 
-    with postgresql.setup_cursor() as cur:
-        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+    with postgresql2.setup_cursor() as cur:
+        postgresql2.upsert_bulk(table_name, data, file_extension='pandas')
 
     return data
 
@@ -110,20 +110,25 @@ def create_table(drop_table_if_exists=False):
     start_date, end_date = dt.date.today(), dt.date.today()
     data = download_combine_reports(start_date, end_date, 'Bare Barrel', 'US')
 
-    with postgresql.setup_cursor() as cur:
+    with postgresql2.setup_cursor() as cur:
         if drop_table_if_exists:
             cur.execute(f"DROP TABLE IF EXISTS {table_name};")
 
-        postgresql.create_table(cur, data, file_extension='pandas', table_name=table_name)
+        postgresql2.create_table(cur, data, file_extension='pandas', table_name=table_name)
 
-        postgresql.update_updated_at_trigger(cur, table_name)
+        postgresql2.update_updated_at_trigger(cur, table_name)
 
-        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+        postgresql2.upsert_bulk(table_name, data, file_extension='pandas')
 
 
 if __name__ == '__main__':
-    start_date = dt.date.today() - dt.timedelta(days=2)
-    end_date = dt.date.today()
+    date_today = dt.date.today()
+
+    # Use this for backfilling
+    # date_today = dt.date(2026, 4, 12)
+    
+    start_date = date_today - dt.timedelta(days=2)
+    end_date = date_today
 
     for account in tenants.keys():
         update_data(start_date, end_date, account=account)
