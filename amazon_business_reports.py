@@ -4,7 +4,7 @@ from utility import to_list
 from amazon_reports import request_report, get_report, download_report
 import time
 import pandas as pd
-import postgresql
+import postgresql2
 import gzip
 import json
 import logging
@@ -15,7 +15,7 @@ logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
 base_table_name = 'business_reports.detail_page_sales_and_traffic'
-tenants = postgresql.get_tenants()
+tenants = postgresql2.get_tenants()
 
 
 def download_combine_reports(start_date, end_date, account, marketplace,  asin_granularity='PARENT', date_granularity='DAY'):
@@ -87,7 +87,7 @@ def update_data(asin_granularity='PARENT', account='Bare Barrel', marketplaces=[
         logger.info(f"Updating data {asin_granularity} {account}-{marketplace} {start_date} - {end_date}")
         data = download_combine_reports(start_date, end_date, account, marketplace, asin_granularity=asin_granularity)
         table_name = base_table_name + f"_{asin_granularity.lower()}"
-        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+        postgresql2.upsert_bulk(table_name, data, file_extension='pandas')
 
 
 def create_table(asin_granularity, drop_table_if_exists=False):
@@ -98,15 +98,15 @@ def create_table(asin_granularity, drop_table_if_exists=False):
 
     table_name = base_table_name + f"_{asin_granularity.lower()}"
 
-    with postgresql.setup_cursor() as cur:
+    with postgresql2.setup_cursor() as cur:
         if drop_table_if_exists:
             cur.execute(f"DROP TABLE IF EXISTS {table_name};")
 
-        postgresql.create_table(cur, data, file_extension='pandas', table_name=table_name)
+        postgresql2.create_table(cur, data, file_extension='pandas', table_name=table_name)
 
-        postgresql.update_updated_at_trigger(cur, table_name)
+        postgresql2.update_updated_at_trigger(cur, table_name)
 
-        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+        postgresql2.upsert_bulk(table_name, data, file_extension='pandas')
 
 
 if __name__ == '__main__':
