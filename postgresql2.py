@@ -348,7 +348,8 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             'date': 'datetime64[ns]',  # You can convert it to a proper Python date type if needed
             'timestamp': 'datetime64[ns]',  # You can convert it to a proper Python datetime type if needed
             'timestamp without time zone': 'datetime64[ns]',
-            'timestamp with time zone': 'datetime64[ns, ',  # Time zone will be filled out later
+            # 'timestamp with time zone': 'datetime64[ns, ',  # Time zone will be filled out later
+            'timestamp with time zone': 'datetime64[ns]',
             'character varying': str,
             'ARRAY': 'object',
             'jsonb': 'object'
@@ -420,8 +421,8 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
             if data_type in (int, float) and data[column_name].dtype == 'object' and data[column_name].str.contains('%').any():
                 data[column_name] = data[column_name].str.replace('%', '').astype(float) / 100
             # inserts time zone
-            if data_type == 'datetime64[ns, ':
-                data_type += str(pd.to_datetime(data[column_name]).dt.tz) + ']'
+            # if data_type == 'datetime64[ns, ':
+            #     data_type += str(pd.to_datetime(data[column_name]).dt.tz) + ']'
             # adjust array representation
             if postgresql_data_type == 'ARRAY':
                 data[column_name] = data[column_name].fillna('')
@@ -434,6 +435,10 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
                 # not transforming string results to all `True`
                 data.replace({'False': False, 'false': False, '0': 0}, inplace=True)
                 data[column_name] = data[column_name].astype(bool)
+
+            # Converts to UTC and removes timezone without changing the clock value
+            if pd.api.types.is_datetime64tz_dtype(data[column_name]):
+                data[column_name] = data[column_name].dt.tz_convert('UTC').dt.tz_localize(None)
 
             data[column_name] = data[column_name].astype(data_type)
 
