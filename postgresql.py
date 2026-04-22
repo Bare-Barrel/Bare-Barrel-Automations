@@ -50,7 +50,8 @@ class setup_cursor():
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type:
-            logger.info("An error occurred:", str(exc_val))
+            # logger.info("An error occurred:", str(exc_val))
+            logger.info(f"An error occurred: {exc_val}")
         self.close()
 
     def connect(self, dbname=None):
@@ -434,7 +435,6 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
                 # not transforming string results to all `True`
                 data.replace({'False': False, 'false': False, '0': 0}, inplace=True)
                 data[column_name] = data[column_name].astype(bool)
-
             data[column_name] = data[column_name].astype(data_type)
 
         # orders columns by their ordinal position
