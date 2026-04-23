@@ -17,7 +17,19 @@ table_name = 'rankings.h10_keyword_tracker'
 
 def clean_data(file_path):
     data = pd.read_csv(file_path)
-    data = data.drop_duplicates()
+    # data = data.drop_duplicates()
+
+    # Show duplicates
+    dupes = data[data.duplicated(subset=['Keyword', 'ASIN', 'Date Added', 'Marketplace'], keep=False)]
+
+    if not dupes.empty:
+        logger.info("DUPLICATES FOUND:")
+        logger.info(dupes.sort_values(['Keyword', 'ASIN', 'Date Added', 'Marketplace']))
+
+    # Drop duplicates based on the composite key
+    data = data.sort_values('Date Added')
+    data = data.drop_duplicates(subset=['Keyword', 'ASIN', 'Date Added', 'Marketplace'], keep='last')
+
     data = data.replace({'-': np.nan})
     numeric_cols = ['Search Volume', 'Organic Rank', 'Sponsored Position']
     data[numeric_cols] = data[numeric_cols].applymap(
