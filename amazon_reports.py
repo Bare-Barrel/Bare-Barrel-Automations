@@ -57,56 +57,63 @@ def request_report(report_type, account, marketplace, start_date=None, end_date=
     return report_id
 
 
-def get_report(report_id, account, marketplace):
+def get_report(report_id, account, marketplace, max_wait_minutes=1440): # stops looping after 1 day
     """
     Checks and waits for the report status to be downloaded.
 
     Returns document_id (str)
     """
-    result = ReportsV2(account=f'{account}-{marketplace}', 
-                        marketplace=Marketplaces[marketplace]).get_report(report_id)
-    payload = result.payload
-    status = payload['processingStatus']
-    logger.info(f"Report Processing Status: {status}")
+    deadline = dt.datetime.now() + dt.timedelta(minutes=max_wait_minutes)
+    while dt.datetime.now() < deadline:
+        result = ReportsV2(account=f'{account}-{marketplace}', 
+                            marketplace=Marketplaces[marketplace]).get_report(report_id)
+        payload = result.payload
+        status = payload['processingStatus']
+        logger.info(f"Report Processing Status: {status}")
 
-    if payload['processingStatus'] == 'DONE':
-        document_id = result.payload['reportDocumentId']
-        if document_id:
-            
-            return document_id
+        if status == 'DONE':
+            document_id = result.payload['reportDocumentId']
+            if document_id:
+                return document_id
 
-    elif payload['processingStatus'] in ('CANCELLED','FATAL', 'FAILED'):
-        logger.warning(f"Report {report_id} was {payload['processingStatus'].lower()}.")
-        return None
+        elif status in ('CANCELLED', 'FATAL', 'FAILED'):
+            logger.warning(f"Report {report_id} was {status.lower()}.")
+            return None
 
-    time.sleep(15)
-    return get_report(report_id, account, marketplace)
+        time.sleep(15)
+    # return get_report(report_id, account, marketplace)
+
+    logger.error(f"Report {report_id} timed out after {max_wait_minutes} minutes.")
+    return None
 
 
-def download_report(document_id, account, marketplace):
+def download_report(document_id, account, marketplace, max_wait_minutes=1440): # stops looping after 1 day
     """
     Downloads the url from the `get_report` function into memory without saving the file.
 
     Returns response.content
     """
-    try:
-        response = ReportsV2(account=f'{account}-{marketplace}', 
-                                marketplace=Marketplaces[marketplace]).get_report_document(document_id)
-        url = response.payload['url']
-        response = requests.get(url)
+    deadline = dt.datetime.now() + dt.timedelta(minutes=max_wait_minutes)
+    while dt.datetime.now() < deadline:
+        try:
+            response = ReportsV2(account=f'{account}-{marketplace}', 
+                                    marketplace=Marketplaces[marketplace]).get_report_document(document_id)
+            url = response.payload['url']
+            response = requests.get(url)
 
-        if response.status_code == 200:
-            logger.info("\tFile downloaded successfully.")
+            if response.status_code == 200:
+                logger.info("\tFile downloaded successfully.")
+                return response.content
 
-            return response.content
+            time.sleep(1)
 
-        time.sleep(1)
-
-    # Retries
-    except Exception as error:
-        logger.warning(f"Error {error}")
-        time.sleep(30)
-        return download_report(document_id, account, marketplace)
+        except Exception as error:
+            logger.warning(f"Download failed: {error}")
+            time.sleep(30)
+            # return download_report(document_id, account, marketplace)
+    
+    logger.error(f"download_report timed out after {max_wait_minutes} minutes for document {document_id}.")
+    return None
 
 
 if __name__ == '__main__':
