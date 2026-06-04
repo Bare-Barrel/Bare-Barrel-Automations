@@ -41,6 +41,9 @@ def request_reports(asin, start_date, end_date, account='Bare Barrel', marketpla
     tries = 0
     report_ids = []
 
+    if not asin or not isinstance(asin, str):
+        raise ValueError(f"Invalid ASIN: {asin!r}")
+
     while start_date <= end_date:
         try:
             end_of_week = get_day_of_week(start_date, 'Saturday') # Gets Saturday of the week
@@ -59,6 +62,10 @@ def request_reports(asin, start_date, end_date, account='Bare Barrel', marketpla
         except SellingApiRequestThrottledException as error:
             logger.warning(error)
             time.sleep(60)
+        
+        except Exception as error:
+            logger.error(f"Failed for ASIN {asin} on {start_date}: {error}")
+            start_date += dt.timedelta(days=7)
 
     return report_ids
 
@@ -69,7 +76,13 @@ def download_combine_reports(report_ids, account='Bare Barrel', marketplace='US'
     for report_id in report_ids:
         # Downloads data
         document_id = get_report(report_id, account, marketplace)
+        if document_id is None:
+            logger.warning(f"Skipping report {report_id} - no document ID")
+            continue
         compressed_data = download_report(document_id, account, marketplace)
+        if compressed_data is None:
+            logger.warning(f"Skipping report {report_id} - download failed or timed out")
+            continue
 
         # Decompresses data
         decompressed_data = gzip.decompress(compressed_data).decode('utf-8')
@@ -105,6 +118,8 @@ def update_data(start_date, end_date, asins='All', account='Bare Barrel', market
                             AND date >= '{start_date}'::DATE - INTERVAL '6 days' 
                             AND date <= '{end_date}'::DATE
                             AND status @> ARRAY['DISCOVERABLE', 'BUYABLE']
+                            AND asin IS NOT NULL
+                            AND asin != ''
             ;""")
             asins = [asin['asin'] for asin in cur.fetchall()]
             return asins
@@ -119,6 +134,9 @@ def update_data(start_date, end_date, asins='All', account='Bare Barrel', market
         logger.info(f"Getting all active ASINs in {account}-{marketplace} {start_date} - {end_date}")
 
     for asin in to_list(asins):
+        if not asin or not isinstance(asin, str):  # Skip None/empty/non-string
+            logger.warning(f"Skipping invalid ASIN: {asin!r}")
+            continue
         report_ids = request_reports(asin, start_date, end_date, account=account, marketplace=marketplace)
         marketplace_report_ids[marketplace] += report_ids
 
