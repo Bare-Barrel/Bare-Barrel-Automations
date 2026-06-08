@@ -6,7 +6,7 @@ from sp_api.base.exceptions import SellingApiRequestThrottledException, SellingA
 from requests.exceptions import ReadTimeout, ConnectionError
 from utility import to_list
 import pandas as pd
-import postgresql
+import postgresql2
 import time
 import logging
 import logger_setup
@@ -16,7 +16,7 @@ logger_setup.setup_logging(__file__)
 logger = logging.getLogger(__name__)
 
 awd_version = '2024-05-09'
-tenants = postgresql.get_tenants()
+tenants = postgresql2.get_tenants()
 
 
 throttle_retry()
@@ -83,6 +83,15 @@ def get_all_inbound_shipments_summary(account='Bare Barrel', marketplaces=['US']
 
     shipments_data['tenant_id'] = tenants[account]
 
+    # Strip non-numeric characters from phone number column
+    if 'originAddress.phoneNumber' in shipments_data.columns:
+        shipments_data['originAddress.phoneNumber'] = (
+            shipments_data['originAddress.phoneNumber']
+            .astype(str)
+            .str.replace(r'\D', '', regex=True)
+            .replace('', pd.NA)
+        )
+
     return shipments_data
 
 
@@ -133,7 +142,7 @@ def get_all_inbound_shipments(account='Bare Barrel', marketplaces=['US', 'CA', '
                 SELECT DISTINCT shipment_id FROM awd.inbound_shipments_summary
                 WHERE tenant_id = '{tenants[account]}';
                 """
-        shipment_ids = postgresql.sql_to_dataframe(query)
+        shipment_ids = postgresql2.sql_to_dataframe(query)
 
         for row in shipment_ids.values:
             shipment_id = row[0]
@@ -158,6 +167,15 @@ def get_all_inbound_shipments(account='Bare Barrel', marketplaces=['US', 'CA', '
             'updatedAt': 'shipment_last_update_date_utc'
     }, inplace=True)
 
+    # Strip non-numeric characters from phone number column
+    if 'originAddress.phoneNumber' in inbound_shipments_data.columns:
+        inbound_shipments_data['originAddress.phoneNumber'] = (
+            inbound_shipments_data['originAddress.phoneNumber']
+            .astype(str)
+            .str.replace(r'\D', '', regex=True)
+            .replace('', pd.NA)
+        )
+
     return inbound_shipments_data
 
 
@@ -173,7 +191,7 @@ def update_data(table_name, account='Bare Barrel', marketplaces=['US', 'CA', 'UK
     data = table_names[table_name]()
 
     logger.info(f"Upserting table {table_name}")
-    postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+    postgresql2.upsert_bulk(table_name, data, file_extension='pandas')
 
 
 def create_table(table_name, drop_table_if_exists=False):
@@ -184,15 +202,15 @@ def create_table(table_name, drop_table_if_exists=False):
     }
     data = table_names[table_name]()
 
-    with postgresql.setup_cursor() as cur:
+    with postgresql2.setup_cursor() as cur:
         if drop_table_if_exists:
             cur.execute(f"DROP TABLE IF EXISTS {table_name};")
 
-        postgresql.create_table(cur, data, file_extension='pandas', table_name=table_name)
+        postgresql2.create_table(cur, data, file_extension='pandas', table_name=table_name)
 
-        postgresql.update_updated_at_trigger(cur, table_name)
+        postgresql2.update_updated_at_trigger(cur, table_name)
 
-        postgresql.upsert_bulk(table_name, data, file_extension='pandas')
+        postgresql2.upsert_bulk(table_name, data, file_extension='pandas')
 
 
 if __name__ == '__main__':
