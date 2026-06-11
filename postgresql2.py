@@ -436,14 +436,23 @@ def upsert_bulk(table_name, file_path, file_extension='auto') -> None:
                 data.replace({'False': False, 'false': False, '0': 0}, inplace=True)
                 data[column_name] = data[column_name].astype(bool)
 
-                # Handle timestamp with time zone: parse, strip tz, cast to naive datetime
-                if postgresql_data_type == 'timestamp with time zone':
-                    data[column_name] = pd.to_datetime(data[column_name], utc=True).dt.tz_convert(None)
-                    continue
+            # Handle timestamp with time zone: parse to UTC, strip tz
+            if postgresql_data_type == 'timestamp with time zone':
+                data[column_name] = pd.to_datetime(data[column_name], utc=True).dt.tz_convert(None)
+                continue
 
-                # Converts to UTC and removes timezone without changing the clock value
-                if pd.api.types.is_datetime64tz_dtype(data[column_name]):
-                    data[column_name] = data[column_name].dt.tz_convert('UTC').dt.tz_convert(None)
+            # Handle date, timestamp, timestamp without time zone
+            if postgresql_data_type in ('date', 'timestamp', 'timestamp without time zone'):
+                parsed = pd.to_datetime(data[column_name], utc=False)
+                if pd.api.types.is_datetime64tz_dtype(parsed):
+                    parsed = parsed.dt.tz_convert('UTC').dt.tz_convert(None)
+                data[column_name] = parsed
+                continue
+
+            # Converts to UTC and removes timezone without changing the clock value
+            if pd.api.types.is_datetime64tz_dtype(data[column_name]):
+                data[column_name] = data[column_name].dt.tz_convert('UTC').dt.tz_convert(None)
+                continue
 
             data[column_name] = data[column_name].astype(data_type)
 
