@@ -42,7 +42,13 @@ def list_portfolios(account, marketplace):
 
 
 def update_data():
+    # Guard clause
+    if bigquery_utils.already_loaded_today(PROJECT_ID, DEST_DATASET, DEST_TABLE, "recorded_at"):
+        logger.info("Data for today already exists. Skipping execution.")
+        return
+
     combined_data = pd.DataFrame()
+
     for account in TENANTS.keys():
         for marketplace in to_list(MARKETPLACES):
             payload = list_portfolios(account, marketplace)

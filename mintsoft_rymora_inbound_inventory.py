@@ -137,7 +137,7 @@ def update_data():
     Updates inbound inventory data from Mintsoft for Allegro MAIN and REWORK.
     """
     # Guard clause
-    if bigquery_utils.already_loaded_today(PROJECT_ID, DEST_DATASET, DEST_TABLE):
+    if bigquery_utils.already_loaded_today(PROJECT_ID, DEST_DATASET, DEST_TABLE, "recorded_at"):
         logger.info("Data for today already exists. Skipping execution.")
         return
 

@@ -76,9 +76,9 @@ def update_data():
     Loads awd inventory for the day to BigQuery.
     """
     # Guard clause
-    # if bigquery_utils.already_loaded_today(PROJECT_ID, DEST_DATASET, DEST_TABLE):
-    #     logger.info("Data for today already exists. Skipping execution.")
-    #     return
+    if bigquery_utils.already_loaded_today(PROJECT_ID, DEST_DATASET, DEST_TABLE, "loaded_at"):
+        logger.info("Data for today already exists. Skipping execution.")
+        return
     inventory_data = pd.DataFrame()
 
     for account in TENANTS.keys():

@@ -134,7 +134,7 @@ def update_data():
     TSP API Key renews daily while others never expire.
     """
     # Guard clause
-    if bigquery_utils.already_loaded_today(PROJECT_ID, DEST_DATASET, DEST_TABLE):
+    if bigquery_utils.already_loaded_today(PROJECT_ID, DEST_DATASET, DEST_TABLE, "recorded_at"):
         logger.info("Data for today already exists. Skipping execution.")
         return
 
