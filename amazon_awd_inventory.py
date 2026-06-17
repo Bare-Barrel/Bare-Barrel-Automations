@@ -79,6 +79,7 @@ def update_data():
     if bigquery_utils.already_loaded_today(PROJECT_ID, DEST_DATASET, DEST_TABLE, "loaded_at"):
         logger.info("Data for today already exists. Skipping execution.")
         return
+
     inventory_data = pd.DataFrame()
 
     for account in TENANTS.keys():
