@@ -16,6 +16,12 @@ PROJECT_ID = "modern-sublime-383117"
 def load_to_bigquery(df, table_id, project_id, load_type):
     """
     Load dataframe to a BigQuery table.
+
+    Args:
+        df: dataframe
+        table_id: BigQuery table ID
+        project_id: BigQuery project ID
+        load_type: append or replace
     """
     try:
         logger.info("Loading DataFrame to BigQuery...")
@@ -53,11 +59,23 @@ def get_tenants():
         logger.info("Error getting tenants: ", e)
 
 
-def already_loaded_today(project_id, dest_dataset, dest_table):
+def already_loaded_today(project_id, dest_dataset, dest_table, date_column_name):
+    """
+    Check if data has been loaded for the day.
+    Used in guard clause to stop execution if data has been loaded for the day.
+
+    Args:
+        project_id: BigQuery project ID
+        dest_dataset: destination dataset name
+        dest_table: destination table name
+        date_column_name: name of the date/timestamp column to check
+    
+    Returns TRUE or FALSE
+    """
     client = bigquery.Client(project=PROJECT_ID)
 
     sql = f"""
-        SELECT MAX(DATE(recorded_at)) AS max_date
+        SELECT MAX(DATE({date_column_name})) AS max_date
         FROM `{project_id}.{dest_dataset}.{dest_table}`
     """
 
