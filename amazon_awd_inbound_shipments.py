@@ -33,17 +33,17 @@ def list_all_inbound_shipments_summary(account='Bare Barrel', marketplace='US', 
     return inbound_shipments_summary
 
 
-throttle_retry()
-@load_all_pages()
-def list_all_inventory(account='Bare Barrel', marketplace='US', **kwargs):
-    """
-    a generator function to return all pages, obtained by NextToken
-    """
-    inventory = AmazonWarehousingAndDistribution(
-                            account=f'{account}-{marketplace}', 
-                            marketplace=Marketplaces[marketplace], 
-                            version=awd_version).list_inventory(**kwargs)
-    return inventory
+# throttle_retry()
+# @load_all_pages()
+# def list_all_inventory(account='Bare Barrel', marketplace='US', **kwargs):
+#     """
+#     a generator function to return all pages, obtained by NextToken
+#     """
+#     inventory = AmazonWarehousingAndDistribution(
+#                             account=f'{account}-{marketplace}', 
+#                             marketplace=Marketplaces[marketplace], 
+#                             version=awd_version).list_inventory(**kwargs)
+#     return inventory
 
 
 def get_all_inbound_shipments_summary(account='Bare Barrel', marketplaces=['US'], **kwargs):
@@ -95,33 +95,33 @@ def get_all_inbound_shipments_summary(account='Bare Barrel', marketplaces=['US']
     return shipments_data
 
 
-def get_all_inventory(account='Bare Barrel', marketplaces=['US', 'CA', 'UK'], **kwargs):
-    """
-    Combines AWD inventory payload
-    Args:
-        sku (string): Filter by seller or merchant SKU for the item.
-        sortOrder (string): Sort the response in ASCENDING or DESCENDING order.
-        details (string): Set to SHOW to return summaries with additional inventory details. Defaults to HIDE, which returns only inventory summary totals.
-        nextToken (string): Token to retrieve the next set of paginated results.
-        maxResults (integer): Maximum number of results to return.
+# def get_all_inventory(account='Bare Barrel', marketplaces=['US', 'CA', 'UK'], **kwargs):
+#     """
+#     Combines AWD inventory payload
+#     Args:
+#         sku (string): Filter by seller or merchant SKU for the item.
+#         sortOrder (string): Sort the response in ASCENDING or DESCENDING order.
+#         details (string): Set to SHOW to return summaries with additional inventory details. Defaults to HIDE, which returns only inventory summary totals.
+#         nextToken (string): Token to retrieve the next set of paginated results.
+#         maxResults (integer): Maximum number of results to return.
 
-    Returns:
-        df
-    """
-    inventory_data = pd.DataFrame()
+#     Returns:
+#         df
+#     """
+#     inventory_data = pd.DataFrame()
 
-    for marketplace in to_list(marketplaces):
-        logger.info(f"Retrieving AWD inventory from {account}-{marketplace}")
-        response = list_all_inventory(account, marketplace, **kwargs)
+#     for marketplace in to_list(marketplaces):
+#         logger.info(f"Retrieving AWD inventory from {account}-{marketplace}")
+#         response = list_all_inventory(account, marketplace, **kwargs)
 
-        for page in response:
-            payload = page.payload.get('inventory')
-            data = pd.json_normalize(payload)
-            data.insert(0, 'date', dt.date.today())
-            data.insert(1, 'tenant_id', tenants[account])
-            inventory_data = pd.concat([inventory_data, data], ignore_index=True)
+#         for page in response:
+#             payload = page.payload.get('inventory')
+#             data = pd.json_normalize(payload)
+#             data.insert(0, 'date', dt.date.today())
+#             data.insert(1, 'tenant_id', tenants[account])
+#             inventory_data = pd.concat([inventory_data, data], ignore_index=True)
 
-    return inventory_data
+#     return inventory_data
 
 
 def get_all_inbound_shipments(account='Bare Barrel', marketplaces=['US', 'CA', 'UK'], **kwargs):
@@ -185,7 +185,7 @@ def update_data(table_name, account='Bare Barrel', marketplaces=['US', 'CA', 'UK
     """
     table_names = {
         'awd.inbound_shipments_summary': lambda: get_all_inbound_shipments_summary(account, marketplaces),
-        'awd.inventory': lambda: get_all_inventory(account, marketplaces, details='SHOW', maxResults=200),
+        # 'awd.inventory': lambda: get_all_inventory(account, marketplaces, details='SHOW', maxResults=200),
         'awd.inbound_shipments': lambda: get_all_inbound_shipments(account, marketplaces, skuQuantities='SHOW')
     }
     data = table_names[table_name]()
@@ -197,7 +197,7 @@ def update_data(table_name, account='Bare Barrel', marketplaces=['US', 'CA', 'UK
 def create_table(table_name, drop_table_if_exists=False):
     table_names = {
         'awd.inbound_shipments_summary': lambda: get_all_inbound_shipments_summary(marketplaces=['US', 'CA']),
-        'awd.inventory': lambda: get_all_inventory(marketplaces=['US', 'CA'], details='SHOW', maxResults=200),
+        # 'awd.inventory': lambda: get_all_inventory(marketplaces=['US', 'CA'], details='SHOW', maxResults=200),
         'awd.inbound_shipments': lambda: get_all_inbound_shipments(marketplaces=['US', 'CA'], skuQuantities='SHOW')
     }
     data = table_names[table_name]()
@@ -215,7 +215,7 @@ def create_table(table_name, drop_table_if_exists=False):
 
 if __name__ == '__main__':
     table_names = ['awd.inbound_shipments_summary', 
-                   'awd.inventory',
+                #    'awd.inventory', # awd.inventory table is now directly loaded to BigQuery.
                    'awd.inbound_shipments']
     for account in tenants.keys():
         for table_name in table_names:
