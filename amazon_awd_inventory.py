@@ -20,7 +20,7 @@ AWD_VERSION = '2024-05-09'
 
 PROJECT_ID = "modern-sublime-383117"
 DEST_DATASET = "awd"
-DEST_TABLE = "inventory_2"
+DEST_TABLE = "inventory"
 
 
 throttle_retry()
@@ -91,7 +91,7 @@ def update_data():
 
     # Load data to BigQuery
     table_id = f"{PROJECT_ID}.{DEST_DATASET}.{DEST_TABLE}"
-    bigquery_utils.load_to_bigquery(inventory_data, table_id, PROJECT_ID, "replace")
+    bigquery_utils.load_to_bigquery(inventory_data, table_id, PROJECT_ID, "append")
 
 
 if __name__ == '__main__':
