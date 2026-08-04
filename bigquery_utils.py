@@ -35,7 +35,7 @@ def load_to_bigquery(df, table_id, project_id, load_type):
         )
         logger.info("Data loaded successfully.")
     except Exception as e:
-        logger.info("Error loading data to BigQuery:", e)
+        logger.info("Error loading data to BigQuery: %s", e)
 
 
 def get_tenants():
@@ -56,7 +56,7 @@ def get_tenants():
         return data
 
     except Exception as e:
-        logger.info("Error getting tenants: ", e)
+        logger.info("Error getting tenants: %s", e)
 
 
 def already_loaded_today(project_id, dest_dataset, dest_table, date_column_name):
