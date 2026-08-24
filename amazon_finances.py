@@ -65,7 +65,7 @@ def get_financial_events(account='Bare Barrel',
             
             df_items["marketplace"] = marketplace
             df_items["tenant_id"] = TENANTS[account]
-            df_items["created_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+            df_items["loaded_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
             financial_events_data = pd.concat([financial_events_data, df_items], ignore_index=True)
             time.sleep(0.5)
     
