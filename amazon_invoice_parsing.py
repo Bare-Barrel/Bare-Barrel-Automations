@@ -342,7 +342,7 @@ def invoice_matches(
     against the parsed line items first, then, in case parsing missed it,
     against a plain substring search over the raw OCR text. name, if given,
     is checked only against the parsed buyer_name.
-    order_date must fall within [start_date, end_date] - an invoice whose
+    order_date or invoice_date must fall within [start_date, end_date] - an invoice whose
     own order_date can't be parsed, or falls outside the range, is rejected.
     This is needed because the folder-level date filter upstream is only an
     approximate.
@@ -357,4 +357,9 @@ def invoice_matches(
             return False
 
     order_date = _parse_date_value(parsed.get("order_date"))
-    return order_date is not None and start_date <= order_date <= end_date
+    invoice_date = _parse_date_value(parsed.get("invoice_date_delivery_date"))
+
+    order_in_range = order_date is not None and start_date <= order_date <= end_date
+    invoice_in_range = invoice_date is not None and start_date <= invoice_date <= end_date
+
+    return order_in_range or invoice_in_range

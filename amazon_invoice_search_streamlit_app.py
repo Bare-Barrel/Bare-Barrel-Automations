@@ -106,7 +106,7 @@ with st.form("search_form"):
     default_end = date.today()
     default_start = default_end - timedelta(days=30)
     date_range = st.date_input(
-        "Order date range",
+        "Date range (matches order date or invoice/delivery date)",
         value=(default_start, default_end),
         max_value=default_end,
     )
