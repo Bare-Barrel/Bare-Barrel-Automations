@@ -90,7 +90,7 @@ _init_state()
  
 st.title("Amazon Invoice Search")
 st.caption(
-    "Search Amazon invoice PDFs in Drive by ASIN, order-date range, and "
+    "Search Amazon invoice PDFs in Shared Drive by ASIN, order/delivery date range, and "
     "optional buyer name."
 )
  
