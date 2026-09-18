@@ -194,12 +194,7 @@ if not st.session_state.running and st.session_state.matches is not None:
         df = df[[c for c in display_columns if c in df.columns]]
         st.dataframe(df, use_container_width=True, hide_index=True)
  
-        csv_bytes = df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "Download results as CSV",
-            data=csv_bytes,
-            file_name=f"invoices_{st.session_state.last_asin}.csv",
-            mime="text/csv",
-        )
+        SHEET_URL = "https://docs.google.com/spreadsheets/d/1wuc8t3sMcZzNN3Riihtv29aeDr-6xM1nGiVvffnW7Uw/edit?gid=0#gid=0"
+        st.link_button("Open results in Google Sheets", SHEET_URL)
     else:
         st.info("No matching invoices found for the given filters.")
